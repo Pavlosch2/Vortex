@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+db.sqlite3
+media/build_archives/
+media/torrents/

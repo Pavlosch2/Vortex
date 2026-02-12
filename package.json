@@ -1,0 +1,14 @@
+{
+  "name": "vortex-root",
+  "version": "1.0.0",
+  "description": "Root for Vortex Project",
+  "main": "manage.py",
+  "scripts": {
+    "back": "venv\\Scripts\\activate && python manage.py runserver",
+    "front": "cd frontend && npm start",
+    "dev": "concurrently \"npm run back\" \"npm run front\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
