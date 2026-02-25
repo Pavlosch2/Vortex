@@ -24,5 +24,5 @@ router.register(r'specs', PCSpecsViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
+    path('api/', include('builds.urls')),
 ]
