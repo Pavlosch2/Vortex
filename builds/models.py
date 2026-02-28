@@ -9,6 +9,7 @@ class Profile(models.Model):
         ('admin', 'Адміністратор'),
     ]
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    age = models.IntegerField(default=18)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     bio = models.TextField(max_length=500, blank=True, verbose_name="Про себе")
     role = models.CharField(max_length=10, choices=ROLES, default='user')
@@ -95,5 +96,5 @@ class AIAnalysisLog(models.Model):
     build = models.ForeignKey(Build, on_delete=models.CASCADE)
     specs = models.ForeignKey(PCSpecs, on_delete=models.SET_NULL, null=True)
     verdict = models.TextField()
-    predicted_fps = models.CharField(max_length=50)
+    predicted_fps = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Cpu, Monitor, HardDrive, Save } from 'lucide-react';
 
@@ -10,15 +10,59 @@ const PCSpecsForm = () => {
         ram_gb: 8
     });
 
+    useEffect(() => {
+        const fetchSpecs = async () => {
+            const token = localStorage.getItem('vortex_token');
+            if (!token) return;
+
+            try {
+                const response = await axios.get('http://127.0.0.1:8000/api/specs/', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.data.length > 0) {
+                    setSpecs(response.data[0]);
+                }
+            } catch (error) {
+                console.error("Не вдалося завантажити характеристики", error);
+            }
+        };
+
+        fetchSpecs();
+    }, []);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        const token = localStorage.getItem('vortex_token');
+
+        if (!token) {
+            alert('Будь ласка, спочатку увійдіть у свій акаунт!');
+            return;
+        }
+
         try {
-            // Відправляємо дані на бекенд (ендпоінт створимо наступним кроком)
-            const response = await axios.post('/api/specs/', specs);
+            const payload = {
+                ...specs,
+                ram_gb: parseInt(specs.ram_gb)
+            };
+
+            const response = await axios.post('http://127.0.0.1:8000/api/specs/', payload, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
             alert('Характеристики збережено успішно!');
+            console.log('Збережено:', response.data);
         } catch (error) {
-            console.error('Помилка при збереженні:', error);
-            alert('Сталася помилка. Перевір консоль.');
+            console.error('Помилка при збереженні:', error.response?.data || error);
+            
+            if (error.response?.status === 401) {
+                alert('Ваша сесія закінчилася або токен недійсний. Увійдіть знову.');
+            } else {
+                alert('Сталася помилка. Подробиці в консолі.');
+            }
         }
     };
 
