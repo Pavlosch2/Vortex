@@ -70,7 +70,6 @@ jobs:
         #non-blocking: якщо якийсь інструмент не встановився, не зупиняємо весь workflow
         
       - name: Flake8 — PEP8 стиль і синтаксис
-        continue-on-error: true
         run: flake8 .
 
       - name: Black — перевірка форматування

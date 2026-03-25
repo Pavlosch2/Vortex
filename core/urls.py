@@ -2,7 +2,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth.models import User
-from django.http import JsonResponse
 from django.urls import include, path
 
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -34,8 +33,6 @@ def google_callback_redirect(request):
         if not user_id:
             logger.warning("No user_id in session, redirecting with error")
             return redirect("http://localhost:3000?auth_error=1")
-        from django.contrib.auth.models import User
-
         try:
             user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
