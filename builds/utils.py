@@ -24,7 +24,7 @@ def generate_torrent(instance):
     file_size = os.path.getsize(file_path)
 
     # ── Piece hashing ────────────────────────────────────────────────
-    piece_length = 512 * 1024  # 512 KB (виправлено typo: piece_lenght → piece_length)
+    _length = 512 * 1024  # 512 KB (виправлено typo: piece_lenght → piece_length)
     pieces = []
 
     with open(file_path, "rb") as f:
@@ -44,7 +44,7 @@ def generate_torrent(instance):
 
     # ── Info hash  (виправлено: було hashlib.bencopedy.encode — не існує) ──
     info_encoded = bencodepy.encode(info)
-    info_hash = hashlib.sha1(info_encoded).hexdigest()
+    info_hash = hashlib.sha1(info_encoded, usedforsecurity=False).hexdigest()
 
     # ── Full torrent dict ────────────────────────────────────────────
     trackers = DEFAULT_TRACKERS  # виправлено: instance.trackers не існує в моделі
