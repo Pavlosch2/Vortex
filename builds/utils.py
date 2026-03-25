@@ -32,7 +32,7 @@ def generate_torrent(instance):
             data = f.read(piece_length)
             if not data:
                 break
-            pieces.append(hashlib.sha1(data).digest())
+            pieces.append(hashlib.sha1(data, usedforsecurity=False).digest())
 
     # ── Info dict ────────────────────────────────────────────────────
     info = {
