@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.db.models import Avg
+
 from rest_framework import serializers
 
 from .models import (

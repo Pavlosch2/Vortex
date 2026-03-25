@@ -2,8 +2,9 @@ import hashlib
 import os
 import time
 
-import bencodepy
 from django.conf import settings
+
+import bencodepy
 
 # Public trackers — вшиті в код, щоб не зберігати в БД
 DEFAULT_TRACKERS = [
