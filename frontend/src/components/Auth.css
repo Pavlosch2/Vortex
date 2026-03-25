@@ -1,37 +1,162 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Icons+Sharp');
 
-:root{
-    --white: #fff;
-    --black: #000; 
-    --lightBlue: #17a;
+:root {
+    --color-primary: #6c9bcf;
+    --color-danger:  #ff0060;
+    --color-success: #1B9c85;
+    --color-white:   #fff;
+    --color-dark:    #363949;
+    --color-light:   rgba(132, 139, 200, 0.18);
+    --color-dark-variant: #677483;
+    --color-background: #f6f6f9;
+    --box-shadow: 0 2rem 3rem var(--color-light);
+
+    --auth-bg-left:  #6c9bcf;
+    --auth-bg-right: #fff;
+    --auth-text:     #363949;
+    --auth-label:    #677483;
+    --auth-underline: #363949;
+    --auth-focus:    #6c9bcf;
+    --auth-btn-bg:   #6c9bcf;
+    --auth-btn-text: #fff;
+    --auth-link:     #6c9bcf;
+    --auth-shadow:   rgba(108, 155, 207, 0.45);
 }
 
-*{
+.dark-mode-variables {
+    --color-background: #181a1e;
+    --color-white:      #202528;
+    --color-dark:       #edeffd;
+    --color-dark-variant: #a3bdcc;
+    --color-light:      rgba(0, 0, 0, 0.4);
+    --box-shadow:       0 2rem 2rem var(--color-light);
+
+    --auth-bg-left:  #1B9c85;
+    --auth-bg-right: #202528;
+    --auth-text:     #edeffd;
+    --auth-label:    #a3bdcc;
+    --auth-underline: #a3bdcc;
+    --auth-focus:    #6c9bcf;
+    --auth-btn-bg:   #6c9bcf;
+    --auth-btn-text: #fff;
+    --auth-link:     #6c9bcf;
+    --auth-shadow:   rgba(0, 0, 0, 0.6);
+}
+
+* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
     font-family: 'Poppins', sans-serif;
 }
 
-body{
+.page-root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-background);
+    transition: background-color 0.1s;
+}
+
+.site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 2rem;
+    background: var(--color-white);
+    border-bottom: 1px solid var(--color-light);
+    box-shadow: 0 2px 20px var(--color-light);
+    backdrop-filter: blur(20px);
+    transition: background 0.1s, border-color 0.1s, box-shadow 0.1s;
+}
+
+.header-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.header-logo-img {
+    width: 2.6rem;
+    height: 2.1rem;
+    object-fit: contain;
+    border-radius: 0.4rem;
+    mix-blend-mode: screen;
+}
+
+.dark-mode-variables .header-logo-img {
+    mix-blend-mode: normal;
+    filter: brightness(1.1);
+}
+
+.header-logo-text {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--color-dark);
+}
+
+.header-welcome {
+    font-size: 0.82rem;
+    color: var(--color-dark-variant);
+    font-weight: 400;
+}
+
+.header-welcome strong {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+.dark-toggle {
+    background-color: var(--color-light);
+    display: flex;
+    align-items: center;
+    height: 1.6rem;
+    width: 4.2rem;
+    cursor: pointer;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    transition: background 0.1s;
+}
+
+.dark-toggle .material-icons-sharp {
+    font-size: 1.2rem;
+    width: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-dark-variant);
+    transition: background 0.2s, color 0.2s;
+}
+
+.dark-toggle .material-icons-sharp.active {
+    background-color: var(--color-primary);
+    color: #fff;
+    border-radius: 0.4rem;
+}
+
+.auth-body {
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    padding: 2rem 1rem;
 }
 
-.wrapper{
+.wrapper {
     position: relative;
     width: 750px;
     height: 450px;
-    background: var(--white);
-    border: 2px solid var(--black);
+    background: var(--auth-bg-right);
+    border: 2px solid var(--color-light);
     border-radius: 10px;
-    box-shadow: 0 0 20px var(--black);
+    box-shadow: 0 0 30px var(--auth-shadow);
     overflow: hidden;
+    transition: background 0.1s, box-shadow 0.1s, border-color 0.1s;
 }
 
-.wrapper .form-box{
+.wrapper .form-box {
     position: absolute;
     top: 0;
     width: 50%;
@@ -48,76 +173,77 @@ body{
     pointer-events: auto;
 }
 
-.form-box h2{
+.form-box h2 {
     margin-bottom: 0;
     position: relative;
     font-size: 32px;
-    color: var(--black);
+    color: var(--auth-text);
     text-align: center;
 }
 
-.form-box .input-box{
+.form-box .input-box {
     position: relative;
     width: 100%;
     height: 50px;
     margin: 20px 0;
 }
 
-.input-box input{
+.input-box input {
     width: 100%;
     height: 100%;
     background: transparent;
-    color: var(--black);
+    color: var(--auth-text);
     font-size: 16px;
     font-weight: 500;
     border: none;
     outline: none;
-    border-bottom: 2px solid var(--black);
+    border-bottom: 2px solid var(--auth-underline);
     transition: .5s;
     padding-right: 23px;
 }
 
 .input-box input:focus,
-.input-box input:valid{
-    border-bottom-color: var(--lightBlue);
+.input-box input:valid {
+    border-bottom-color: var(--auth-focus);
 }
 
-.input-box label{
+.input-box label {
     position: absolute;
     top: 50%;
     left: 0;
     transform: translateY(-50%);
     font-size: 16px;
-    color: var(--black);
+    color: var(--auth-label);
     pointer-events: none;
     transition: 0.5s;
 }
 
-.input-box input:focus~label,
-.input-box input:valid~label{
+.input-box input:focus ~ label,
+.input-box input:valid ~ label {
     top: -5px;
-    color: var(--lightBlue);
+    color: var(--auth-focus);
 }
 
-.input-box i{
+.input-box i {
     position: absolute;
     top: 50%;
     right: 0;
     transform: translateY(-50%);
     font-size: 18px;
+    color: var(--auth-label);
     transition: 0.5s;
 }
 
-.input-box input:focus~i,
-.input-box input:valid~i{
-    color: var(--lightBlue);
+.input-box input:focus ~ i,
+.input-box input:valid ~ i {
+    color: var(--auth-focus);
 }
 
-form button{
+form button {
     width: 100%;
     height: 45px;
-    background-color: var(--black);
-    color: var(--white);
+    background-color: var(--auth-btn-bg);
+    color: var(--auth-btn-text);
     border: none;
     outline: none;
     border-radius: 40px;
@@ -127,68 +253,28 @@ form button{
     transition: .3s;
 }
 
-form button:hover{
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+form button:hover {
+    box-shadow: 0 0 14px var(--auth-shadow);
 }
 
-.forgot-pass {
-    text-align: right;
-    margin-top: 10px;
-}
-
-.forgot-pass a {
-    color: var(--lightBlue);
-    text-decoration: none;
+form .linkTxt {
     font-size: 14px;
-    font-weight: 500;
-}
-
-.forgot-pass a:hover {
-    text-decoration: underline;
-}
-
-.oauth-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 15px;
-}
-
-.oauth-btn {
-    flex: 1;
-    height: 40px;
-    border: 2px solid var(--black);
-    border-radius: 40px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.3rem;
-    transition: 0.3s;
-    background: transparent;
-}
-
-.oauth-btn.google {
-    color: #db4437;
-}
-
-form .linkTxt{
-    font-size: 14px;
-    color: var(--black);
+    color: var(--auth-label);
     text-align: center;
     margin: 20px 0 10px;
 }
 
-.linkTxt p a{
-    color: blue;
+.linkTxt p a {
+    color: var(--auth-link);
     text-decoration: none;
     font-weight: 600;
 }
 
-.linkTxt p a:hover{
+.linkTxt p a:hover {
     text-decoration: underline;
 }
 
-.wrapper .form-box.login .animation{
+.wrapper .form-box.login .animation {
     transform: translateX(0);
     transition: 0.7s ease;
     opacity: 1;
@@ -201,14 +287,14 @@ form .linkTxt{
     z-index: 0;
 }
 
-.wrapper.active .form-box.login .animation{
+.wrapper.active .form-box.login .animation {
     transform: translateX(-120%);
     opacity: 0;
     filter: blur(10px);
     transition-delay: calc(.1s * var(--i));
 }
 
-.wrapper .info-text{
+.wrapper .info-text {
     position: absolute;
     top: 0;
     width: 50%;
@@ -218,24 +304,24 @@ form .linkTxt{
     justify-content: center;
 }
 
-.wrapper .info-text.login{
+.wrapper .info-text.login {
     right: 0;
     padding: 0 24px 150px 90px;
 }
 
-.wrapper .info-text h2{
+.wrapper .info-text h2 {
     font-size: 30px;
-    color: var(--white);
+    color: #fff;
     line-height: 1.3;
     text-transform: uppercase;
 }
 
-.wrapper .info-text p{
+.wrapper .info-text p {
     font-size: 16px;
-    color: var(--white);
+    color: rgba(255,255,255,0.85);
 }
 
-.wrapper .info-text.login .animation{
+.wrapper .info-text.login .animation {
     transform: translateX(0);
     opacity: 1;
     filter: blur(0);
@@ -243,7 +329,7 @@ form .linkTxt{
     transition-delay: calc(.1s * var(--j));
 }
 
-.wrapper.active .info-text.login .animation{
+.wrapper.active .info-text.login .animation {
     transform: translateX(120px);
     opacity: 0;
     filter: blur(10px);
@@ -251,22 +337,22 @@ form .linkTxt{
     transition-delay: calc(.1s * var(--i));
 }
 
-.wrapper .rotate-bg{
+.wrapper .rotate-bg {
     position: absolute;
     top: -4px;
     right: 0;
     width: 850px;
     height: 600px;
-    background: #000;
+    background: var(--auth-bg-left);
     transform: rotate(10deg) skewY(40deg);
     transform-origin: bottom right;
-    transition: 1.5s ease;
-    transition-delay: 1.6s;
+    transition: 1.5s ease, background 0.1s;
+    transition-delay: 1.6s, 0s;
 }
 
-.wrapper.active .rotate-bg{
+.wrapper.active .rotate-bg {
     transform: rotate(0) skewY(0);
-    transition-delay: 0.5s;
+    transition-delay: 0.5s, 0s;
 }
 
 .wrapper .form-box.register {
@@ -281,7 +367,7 @@ form .linkTxt{
     z-index: 1;
 }
 
-.wrapper .form-box.register .animation{
+.wrapper .form-box.register .animation {
     transform: translateX(120%);
     opacity: 0;
     filter: blur(10px);
@@ -289,25 +375,25 @@ form .linkTxt{
     transition-delay: calc(.1s * var(--j));
 }
 
-.wrapper.active .form-box.register .animation{
+.wrapper.active .form-box.register .animation {
     transform: translateX(0);
     opacity: 1;
     filter: blur(0);
     transition-delay: calc(.1s * var(--i));
 }
 
-.wrapper .info-text.register{
+.wrapper .info-text.register {
     left: 0;
     text-align: left;
     padding: 0 150px 60px 40px;
     pointer-events: none;
 }
 
-.wrapper.active .info-text.register{
+.wrapper.active .info-text.register {
     pointer-events: auto;
 }
 
-.wrapper .info-text.register .animation{
+.wrapper .info-text.register .animation {
     transform: translateX(-120%);
     opacity: 0;
     filter: blur(10px);
@@ -315,35 +401,35 @@ form .linkTxt{
     transition-delay: calc(.1s * var(--j));
 }
 
-.wrapper.active .info-text.register .animation{
+.wrapper.active .info-text.register .animation {
     transform: translateX(0);
     opacity: 1;
     filter: blur(0);
     transition-delay: calc(.1s * var(--i));
 }
 
-.wrapper .rotate-bg2{
+.wrapper .rotate-bg2 {
     position: absolute;
     top: 100%;
     left: 250px;
     width: 850px;
     height: 700px;
-    background: var(--white);
+    background: var(--auth-bg-right);
     transform: rotate(0) skewY(0);
     transform-origin: bottom left;
-    transition: 1.5s ease;
-    transition-delay: 0.5s;
+    transition: 1.5s ease, background 0.1s;
+    transition-delay: 0.5s, 0s;
 }
 
-.wrapper.active .rotate-bg2{
+.wrapper.active .rotate-bg2 {
     transform: rotate(-11deg) skewY(-40deg);
-    transition-delay: 1.2s;
+    transition-delay: 1.2s, 0s;
 }
 
 .link-btn {
     background: none;
     border: none;
-    color: #17a;
+    color: var(--auth-link);
     text-decoration: none;
     font-weight: 600;
     cursor: pointer;
@@ -371,8 +457,140 @@ form .linkTxt{
         display: none;
     }
 
-    .wrapper .rotate-bg, 
+    .wrapper .rotate-bg,
     .wrapper .rotate-bg2 {
         pointer-events: none;
     }
+
+    .site-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.7rem 1rem;
+    }
+
+    .header-welcome {
+        width: 100%;
+        text-align: center;
+        order: 3;
+    }
+}
+
+.link-inline {
+  color: var(--auth-link);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.link-inline:hover {
+  text-decoration: underline;
+}
+
+.auth-error {
+  color: #ff0060;
+  font-size: 0.75rem;
+  margin: 4px 0 0;
+}
+.auth-info {
+  color: #1B9c85;
+  font-size: 0.78rem;
+  margin: 0 0 8px;
+  text-align: center;
+}
+.field-error {
+  position: static;
+  margin-top: 2px;
+}
+
+.auth-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2.5rem 3rem;
+  background: var(--auth-bg-right);
+  animation: slideIn 0.3s ease;
+}
+.auth-overlay h2 {
+  font-size: 1.4rem;
+  color: var(--auth-text);
+  margin-bottom: 0.4rem;
+}
+.overlay-sub {
+  font-size: 0.82rem;
+  color: var(--auth-label);
+  margin-bottom: 1.2rem;
+}
+.overlay-form {
+  display: flex;
+  flex-direction: column;
+}
+.overlay-back {
+  text-align: center;
+  margin-top: 0.8rem;
+  font-size: 0.82rem;
+  color: var(--auth-label);
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.auth-overlay .input-box {
+  height: 50px;
+  margin: 0 0 0.5rem;
+}
+
+.auth-overlay .input-box label {
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+}
+
+.auth-overlay .input-box input:focus ~ label,
+.auth-overlay .input-box input:valid ~ label {
+  top: 220px;
+  font-size: 11px;
+  transform: translateY(0);
+}
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 45px;
+  background: var(--auth-bg-right);
+  color: var(--auth-text);
+  border: 1.5px solid var(--color-light);
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: box-shadow .3s, border-color .3s;
+  margin-top: 0;
+}
+
+.google-btn:hover {
+  box-shadow: 0 0 14px var(--auth-shadow);
+  border-color: var(--color-primary);
+}
+
+.google-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  color: var(--auth-label);
+  font-size: 12px;
+}
+
+.google-divider::before,
+.google-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-light);
 }

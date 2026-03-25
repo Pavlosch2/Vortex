@@ -1,34 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Auth from './components/Auth';
-import PCSpecsForm from './components/PCSpecsForm';
-import AIAnalyzer from './components/AIAnalyzer';
+import Dashboard from './components/Dashboard';
+import ResetPassword from './components/ResetPassword';
 
-function App() {
-  const [token, setToken] = useState(localStorage.getItem('vortex_token'));
+const App = () => {
+  const [token, setToken] = useState(localStorage.getItem('vortex_token') || null);
+  const [dark, setDark]   = useState(localStorage.getItem('vortex_theme') === 'dark');
+  const [resetParams, setResetParams] = useState(null);
 
-  const handleLogout = () => {
-    localStorage.removeItem('vortex_token');
-    setToken(null);
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleToken = params.get('token');
+    const authError   = params.get('auth_error');
 
-  return (
-    <div className="App">
-      {!token ? (
-        <Auth onLoginSuccess={(newToken) => setToken(newToken)} />
-      ) : (
-        <>
-          <header style={{ display: 'flex', justifyContent: 'space-between', padding: '20px' }}>
-            <h1>Vortex</h1>
-            <button onClick={handleLogout}>Вийти</button>
-          </header>
-          <main>
-            <PCSpecsForm />
-            <AIAnalyzer buildId={1} />
-          </main>
-        </>
-      )}
-    </div>
-  );
-}
+    if (googleToken) {
+      localStorage.setItem('vortex_token', googleToken);
+      setToken(googleToken);
+      window.history.replaceState({}, '', '/');
+    }
+    if (authError) {
+      window.history.replaceState({}, '', '/');
+    }
+
+    // Handle /reset-password/{uid}/{token}
+    const path = window.location.pathname;
+    const match = path.match(/^\/reset-password\/([^/]+)\/([^/]+)\/?$/);
+    if (match) {
+      setResetParams({ uid: match[1], token: match[2] });
+    }
+  }, []);
+
+  const handleLoginSuccess = (newToken) => setToken(newToken);
+  const handleLogout = () => { localStorage.removeItem('vortex_token'); setToken(null); };
+
+  // Show reset password page
+  if (resetParams) {
+    return (
+      <ResetPassword
+        uid={resetParams.uid}
+        token={resetParams.token}
+        onDone={() => {
+          setResetParams(null);
+          window.history.replaceState({}, '', '/');
+        }}
+      />
+    );
+  }
+
+  if (!token) return <Auth onLoginSuccess={handleLoginSuccess} dark={dark} setDark={setDark} />;
+  return <Dashboard onLogout={handleLogout} dark={dark} setDark={setDark} />;
+};
 
 export default App;
