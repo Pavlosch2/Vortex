@@ -6,7 +6,6 @@ from django.conf import settings
 
 import bencodepy
 
-# Public trackers — вшиті в код, щоб не зберігати в БД
 DEFAULT_TRACKERS = [
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://open.tracker.cl:1337/announce",
@@ -23,8 +22,7 @@ def generate_torrent(instance):
     file_name = os.path.basename(file_path)
     file_size = os.path.getsize(file_path)
 
-    # ── Piece hashing ────────────────────────────────────────────────
-    _length = 512 * 1024  # 512 KB (виправлено typo: piece_lenght → piece_length)
+    piece_length = 512 * 1024
     pieces = []
 
     with open(file_path, "rb") as f:
@@ -34,7 +32,6 @@ def generate_torrent(instance):
                 break
             pieces.append(hashlib.sha1(data, usedforsecurity=False).digest())
 
-    # ── Info dict ────────────────────────────────────────────────────
     info = {
         b"name": file_name.encode(),
         b"piece length": piece_length,
@@ -42,21 +39,18 @@ def generate_torrent(instance):
         b"length": file_size,
     }
 
-    # ── Info hash  (виправлено: було hashlib.bencopedy.encode — не існує) ──
     info_encoded = bencodepy.encode(info)
     info_hash = hashlib.sha1(info_encoded, usedforsecurity=False).hexdigest()
 
-    # ── Full torrent dict ────────────────────────────────────────────
-    trackers = DEFAULT_TRACKERS  # виправлено: instance.trackers не існує в моделі
+    trackers = DEFAULT_TRACKERS
     torrent_data = {
         b"announce": trackers[0].encode(),
         b"announce-list": [[t.encode()] for t in trackers],
         b"info": info,
-        b"creation date": int(time.time()),  # виправлено: було хардкод 123456789
+        b"creation date": int(time.time()),
         b"comment": f"Build: {instance.title}".encode(),
     }
 
-    # ── Зберігаємо файл ─────────────────────────────────────────────
     safe_title = "".join(
         c if c.isalnum() or c in ("-", "_") else "_" for c in instance.title
     )
@@ -68,7 +62,6 @@ def generate_torrent(instance):
     with open(torrent_path, "wb") as f:
         f.write(bencodepy.encode(torrent_data))
 
-    # ── Magnet link (з трекерами) ────────────────────────────────────
     tracker_params = "".join(f"&tr={t}" for t in trackers)
     magnet_link = f"magnet:?xt=urn:btih:{info_hash}&dn={file_name}{tracker_params}"
 

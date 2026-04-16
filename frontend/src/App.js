@@ -22,7 +22,6 @@ const App = () => {
       window.history.replaceState({}, '', '/');
     }
 
-    // Handle /reset-password/{uid}/{token}
     const path = window.location.pathname;
     const match = path.match(/^\/reset-password\/([^/]+)\/([^/]+)\/?$/);
     if (match) {
@@ -33,7 +32,6 @@ const App = () => {
   const handleLoginSuccess = (newToken) => setToken(newToken);
   const handleLogout = () => { localStorage.removeItem('vortex_token'); setToken(null); };
 
-  // Show reset password page
   if (resetParams) {
     return (
       <ResetPassword

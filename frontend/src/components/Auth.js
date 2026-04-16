@@ -92,7 +92,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
           <span className="rotate-bg" />
           <span className="rotate-bg2" />
 
-          {/* ── LOGIN ── */}
+          {/* LOGIN */}
           <div className="form-box login">
             <h2 className="animation" style={{'--i':0,'--j':21}}>Вхід</h2>
             <form onSubmit={handleLogin}>
@@ -150,7 +150,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
             </form>
           </div>
 
-          {/* ── REGISTER ── */}
+          {/* REGISTER */}
           <div className="form-box register">
             <h2 className="animation" style={{'--i':17,'--j':0}}>Реєстрація</h2>
             <form onSubmit={handleRegister}>
@@ -202,7 +202,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
             </form>
           </div>
 
-          {/* ── FORGOT PASSWORD overlay ── */}
+          {/* FORGOT PASSWORD overlay */}
           {(view === 'forgot' || view === 'reset-sent') && (
             <div className="auth-overlay">
               {view === 'forgot' ? (

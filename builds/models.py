@@ -285,16 +285,14 @@ class TicketScreenshot(models.Model):
 
 
 class TicketReply(models.Model):
-    ticket = models.ForeignKey(
-        SupportTicket, on_delete=models.CASCADE, related_name="replies"
-    )
+    ticket = models.ForeignKey(SupportTicket, on_delete=models.CASCADE, related_name='replies')
     author = models.ForeignKey(User, on_delete=models.CASCADE)
-    message = models.TextField()
+    message = models.TextField(blank=True)
+    image = models.ImageField(upload_to='support_reply_images/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["created_at"]
-
+        ordering = ['created_at']
 
 class BuildReview(models.Model):
     build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="reviews")
@@ -347,3 +345,33 @@ class BuildPostReply(models.Model):
 
     def __str__(self):
         return f"{self.author.username} reply on post {self.post.id}"
+
+
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ("post_reply", "Відповідь на пост"),
+        ("ticket_reply", "Відповідь у зверненні"),
+        ("ai_done", "Результат AI-аналізу"),
+        ("moderation_warning", "Попередження модерації"),
+        ("submission_status", "Зміна статусу заявки"),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    is_read = models.BooleanField(default=False)
+    actor_name = models.CharField(max_length=150, blank=True)
+    title = models.CharField(max_length=255, blank=True)
+    body = models.TextField(blank=True)
+    link_type = models.CharField(max_length=50, blank=True)
+    link_params = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Сповіщення"
+        verbose_name_plural = "Сповіщення"
+
+    def __str__(self):
+        return f"[{self.type}] {self.user.username}: {self.body[:60]}"

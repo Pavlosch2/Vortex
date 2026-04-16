@@ -13,6 +13,11 @@ from .views import (
     PCSpecsViewSet,
     ProfileView,
     SupportTicketViewSet,
+    NotificationListView,
+    NotificationMarkReadView,
+    NotificationMarkAllReadView,
+    NotificationDeleteView,
+    NotificationDeleteAllView,
 )
 
 router = DefaultRouter()
@@ -33,4 +38,9 @@ urlpatterns = [
         AdminUserDetailView.as_view(),
         name="admin-user-detail",
     ),
+    path("notifications/", NotificationListView.as_view(), name="notifications-list"),
+    path("notifications/mark-all-read/", NotificationMarkAllReadView.as_view(), name="notifications-mark-all"),
+    path("notifications/clear-all/", NotificationDeleteAllView.as_view(), name="notifications-clear-all"),
+    path("notifications/<int:pk>/read/", NotificationMarkReadView.as_view(), name="notification-read"),
+    path("notifications/<int:pk>/delete/", NotificationDeleteView.as_view(), name="notification-delete"),
 ]

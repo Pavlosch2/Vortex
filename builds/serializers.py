@@ -19,6 +19,7 @@ from .models import (
     SupportTicket,
     TicketReply,
     TicketScreenshot,
+    Notification
 )
 
 
@@ -322,33 +323,36 @@ class TicketScreenshotSerializer(serializers.ModelSerializer):
 
 
 class TicketReplySerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source="author.username", read_only=True)
+    author_name = serializers.CharField(source='author.username', read_only=True)
     author_avatar = serializers.SerializerMethodField()
     is_staff = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
 
     class Meta:
         model = TicketReply
-        fields = [
-            "id",
-            "author_name",
-            "author_avatar",
-            "is_staff",
-            "message",
-            "created_at",
-        ]
+        fields = ['id', 'author_name', 'author_avatar', 'is_staff', 'message', 'image', 'created_at']
 
     def get_is_staff(self, obj):
         try:
-            return obj.author.profile.role in ("manager", "admin")
+            return obj.author.profile.role in ('manager', 'admin')
         except Exception:
             return False
 
     def get_author_avatar(self, obj):
         try:
-            request = self.context.get("request")
+            request = self.context.get('request')
             avatar = obj.author.profile.avatar
             if avatar and request:
                 return request.build_absolute_uri(avatar.url)
+        except Exception:
+            pass
+        return None
+
+    def get_image(self, obj):
+        try:
+            request = self.context.get('request')
+            if obj.image and request:
+                return request.build_absolute_uri(obj.image.url)
         except Exception:
             pass
         return None
@@ -427,3 +431,19 @@ class UserAdminSerializer(serializers.ModelSerializer):
             setattr(profile, attr, val)
         profile.save()
         return instance
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "type",
+            "is_read",
+            "actor_name",
+            "title",
+            "body",
+            "link_type",
+            "link_params",
+            "created_at",
+        ]
+        read_only_fields = ["id", "type", "actor_name", "title", "body", "link_type", "link_params", "created_at"]

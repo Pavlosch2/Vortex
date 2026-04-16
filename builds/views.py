@@ -21,6 +21,7 @@ from .models import (
     SupportTicket,
     TicketReply,
     TicketScreenshot,
+    Notification,
 )
 from .serializers import (
     AIAnalysisLogSerializer,
@@ -37,10 +38,15 @@ from .serializers import (
     SupportTicketSerializer,
     TicketReplySerializer,
     UserAdminSerializer,
+    NotificationSerializer,
 )
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
+from .notify import (
+    notify_post_reply,
+    notify_ticket_reply,
+    notify_ai_done,
+    notify_submission_status,
+)
 
 def get_role(user):
     try:
@@ -55,9 +61,6 @@ def is_staff(user):
 
 def is_admin(user):
     return get_role(user) == "admin"
-
-
-# ── Catalog builds ─────────────────────────────────────────────────────────────
 
 
 class BuildViewSet(viewsets.ReadOnlyModelViewSet):
@@ -84,7 +87,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
     def get_serializer_context(self):
         return {"request": self.request}
 
-    # POST /api/builds/{id}/favorite/
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def favorite(self, request, pk=None):
         build = self.get_object()
@@ -94,7 +96,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"is_favorite": False})
         return Response({"is_favorite": True})
 
-    # POST /api/builds/{id}/analyze_async/
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def analyze_async(self, request, pk=None):
         build = self.get_object()
@@ -108,23 +109,19 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         if not profile.is_premium and profile.ai_credits <= 0:
             return Response({"error": "AI-кредити вичерпано."}, status=402)
 
-        # Create task record
         task = AnalysisTask.objects.create(user=request.user, build=build)
 
-        # Queue background job
         try:
             from .tasks import run_analysis_task
 
             run_analysis_task(task.id)
         except Exception as e:
-            # If background_task not installed — run synchronously as fallback
             task.status = "running"
             task.save(update_fields=["status"])
             _run_sync(task)
 
         return Response({"task_id": task.id, "status": task.status}, status=202)
 
-    # GET /api/builds/search/?q=...
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def search(self, request):
         query = request.query_params.get("q", "").strip()
@@ -133,7 +130,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
 
         profile = request.user.profile
 
-        # Credits check — same shared pool as AI analysis
         if not profile.is_premium and profile.ai_credits <= 0:
             return Response(
                 {
@@ -142,7 +138,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
                 status=402,
             )
 
-        # Full catalog with component details for richer AI context
         builds = Build.objects.filter(is_public=True).prefetch_related(
             "components", "images"
         )
@@ -174,7 +169,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
 
         ids = ai_search_builds(query, data, specs)
 
-        # Deduct 1 credit on success (premium — unlimited)
         if not profile.is_premium:
             profile.ai_credits -= 1
             profile.save(update_fields=["ai_credits"])
@@ -190,8 +184,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
 
-    # GET  /api/builds/{id}/reviews/
-    # POST /api/builds/{id}/reviews/
     @action(detail=True, methods=["get", "post"], permission_classes=[])
     def reviews(self, request, pk=None):
         import traceback
@@ -215,7 +207,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": str(e), "detail": traceback.format_exc()}, status=500
             )
 
-    # DELETE /api/builds/{id}/reviews/
     @action(
         detail=True,
         methods=["delete"],
@@ -229,8 +220,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "Відгук не знайдено"}, status=404)
         return Response(status=204)
 
-    # GET  /api/builds/{id}/posts/
-    # POST /api/builds/{id}/posts/
     @action(detail=True, methods=["get", "post"], permission_classes=[])
     def posts(self, request, pk=None):
         import traceback
@@ -256,7 +245,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": str(e), "detail": traceback.format_exc()}, status=500
             )
 
-    # PATCH /api/builds/{id}/posts/{post_id}/edit/
     @action(
         detail=True,
         methods=["patch"],
@@ -282,7 +270,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         post.save(update_fields=["text", "updated_at"])
         return Response(BuildPostSerializer(post, context={"request": request}).data)
 
-    # POST /api/builds/{id}/posts/{post_id}/reply/
     @action(
         detail=True,
         methods=["post"],
@@ -298,12 +285,13 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         if not text:
             return Response({"error": "Текст не може бути порожнім"}, status=400)
         reply = BuildPostReply.objects.create(post=post, author=request.user, text=text)
+        if post.author != request.user:
+            notify_post_reply(post.author, request.user, build.id, post.id, reply.id)
         return Response(
             BuildPostReplySerializer(reply, context={"request": request}).data,
             status=201,
         )
-
-    # DELETE /api/builds/{id}/posts/{post_id}/reply/{reply_id}/
+    
     @action(
         detail=True,
         methods=["delete"],
@@ -325,7 +313,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         reply.delete()
         return Response(status=204)
 
-    # DELETE /api/builds/{id}/posts/{post_id}/
     @action(
         detail=True,
         methods=["delete"],
@@ -347,7 +334,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         post.delete()
         return Response(status=204)
 
-    # GET /api/builds/{id}/files/
     @action(detail=True, methods=["get"], permission_classes=[])
     def files(self, request, pk=None):
         import os
@@ -600,7 +586,6 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
-    # GET /api/builds/{id}/similar/
     @action(detail=True, methods=["get"], permission_classes=[])
     def similar(self, request, pk=None):
         build = self.get_object()
@@ -661,9 +646,6 @@ def _run_sync(task):
         task.save()
 
 
-# ── Task polling & cancel ──────────────────────────────────────────────────────
-
-
 class AnalysisTaskView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -680,18 +662,12 @@ class AnalysisTaskView(APIView):
         return Response({"status": "cancelled"})
 
 
-# ── Analysis history ───────────────────────────────────────────────────────────
-
-
 class AnalysisLogView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         logs = AIAnalysisLog.objects.filter(user=request.user).select_related("build")
         return Response(AIAnalysisLogSerializer(logs, many=True).data)
-
-
-# ── PC Specs ───────────────────────────────────────────────────────────────────
 
 
 class PCSpecsViewSet(viewsets.ModelViewSet):
@@ -703,9 +679,6 @@ class PCSpecsViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
-
-# ── Profile ────────────────────────────────────────────────────────────────────
 
 
 class ProfileView(APIView):
@@ -726,9 +699,6 @@ class ProfileView(APIView):
             profile.bio = bio
         profile.save()
         return Response(ProfileSerializer(profile, context={"request": request}).data)
-
-
-# ── User build submissions ─────────────────────────────────────────────────────
 
 
 class BuildSubmissionViewSet(viewsets.ModelViewSet):
@@ -774,6 +744,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.reviewed_by = request.user
         sub.published_build = build
         sub.save()
+        notify_submission_status(submission.submitted_by, submission.title, "approved", submission.id)
 
         import threading
 
@@ -981,10 +952,8 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.rejection_reason = reason
         sub.reviewed_by = request.user
         sub.save()
+        notify_submission_status(submission.submitted_by, submission.title, "rejected", submission.id, submission.rejection_reason)
         return Response({"status": "rejected"})
-
-
-# ── Support ────────────────────────────────────────────────────────────────────
 
 
 class SupportTicketViewSet(viewsets.ModelViewSet):
@@ -1011,24 +980,30 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
             if key.startswith("screenshot"):
                 TicketScreenshot.objects.create(ticket=ticket, image=f)
 
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def reply(self, request, pk=None):
         ticket = self.get_object()
         is_owner = ticket.user == request.user
         if not is_staff(request.user) and not is_owner:
-            return Response({"error": "Недостатньо прав"}, status=403)
-        if ticket.status == "closed":
-            return Response({"error": "Звернення закрито"}, status=400)
-        message = request.data.get("message", "").strip()
-        if not message:
-            return Response({"error": "Повідомлення порожнє"}, status=400)
+            return Response({'error': 'Недостатньо прав'}, status=403)
+        if ticket.status == 'closed':
+            return Response({'error': 'Звернення закрито'}, status=400)
+        message = request.data.get('message', '').strip()
+        image = request.FILES.get('image')
+        if not message and not image:
+            return Response({'error': 'Повідомлення або зображення є обов\'язковим'}, status=400)
         reply = TicketReply.objects.create(
-            ticket=ticket, author=request.user, message=message
+            ticket=ticket, author=request.user, message=message, image=image
         )
-        if is_staff(request.user) and ticket.status == "open":
-            ticket.status = "in_progress"
-            ticket.save(update_fields=["status"])
-        return Response(TicketReplySerializer(reply).data, status=201)
+        if ticket.user != request.user:
+            notify_ticket_reply(ticket.user, request.user, ticket.id)
+        if is_staff(request.user) and ticket.status == 'open':
+            ticket.status = 'in_progress'
+            ticket.save(update_fields=['status'])
+        return Response(
+            TicketReplySerializer(reply, context={'request': request}).data,
+            status=201
+        )
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def reopen(self, request, pk=None):
@@ -1058,8 +1033,6 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         ticket.delete()
         return Response(status=204)
 
-
-# ── Admin panel: Build CRUD ────────────────────────────────────────────────────
 
 
 class AdminBuildViewSet(viewsets.ModelViewSet):
@@ -1150,9 +1123,6 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
 
-# ── Password Reset ─────────────────────────────────────────────────────────────
-
-
 class PasswordResetRequestView(APIView):
     """POST /api/auth/password-reset/"""
 
@@ -1173,7 +1143,6 @@ class PasswordResetRequestView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            # Не розкриваємо чи існує email
             return Response(
                 {"detail": "Якщо такий email зареєстровано - лист надіслано."}
             )
@@ -1183,8 +1152,6 @@ class PasswordResetRequestView(APIView):
         frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
         reset_url = f"{frontend_url}/reset-password/{uid}/{token}/"
 
-        # Використовуємо власний шаблон з унікальною назвою,
-        # щоб уникнути конфлікту з django.contrib.admin шаблоном
         html = render_to_string(
             "registration/vortex_password_reset_email.html",
             {
@@ -1243,3 +1210,53 @@ class PasswordResetConfirmView(APIView):
         user.set_password(password)
         user.save()
         return Response({"detail": "Пароль успішно змінено. Тепер увійдіть."})
+
+class NotificationListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = Notification.objects.filter(user=request.user)
+        serializer = NotificationSerializer(qs, many=True)
+        unread_count = qs.filter(is_read=False).count()
+        return Response({"results": serializer.data, "unread_count": unread_count})
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            n = Notification.objects.get(pk=pk, user=request.user)
+        except Notification.DoesNotExist:
+            return Response(status=404)
+        n.is_read = True
+        n.save(update_fields=["is_read"])
+        return Response({"ok": True})
+
+
+class NotificationMarkAllReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({"ok": True})
+
+
+class NotificationDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            n = Notification.objects.get(pk=pk, user=request.user)
+        except Notification.DoesNotExist:
+            return Response(status=404)
+        n.delete()
+        return Response(status=204)
+
+
+class NotificationDeleteAllView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        Notification.objects.filter(user=request.user).delete()
+        return Response(status=204)

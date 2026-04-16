@@ -8,20 +8,15 @@ import {
 const API  = 'http://127.0.0.1:8000/api';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
 
-// ── Verdict color ──────────────────────────────────────────────────────────────
 const verdictStyle = (verdict = '') => {
   const v = verdict.toLowerCase();
-  // "частково сумісно" — yellow (check before green to avoid false match)
   if (v.includes('частково'))
     return { color: '#f7d060', bg: 'rgba(247,208,96,0.1)', border: 'rgba(247,208,96,0.3)' };
-  // "сумісно" (without "не") — green
   if (v.includes('сумісно') && !v.includes('не сумісно'))
     return { color: '#1B9c85', bg: 'rgba(27,156,133,0.1)', border: 'rgba(27,156,133,0.3)' };
-  // "не сумісно" and anything else — red
   return { color: '#ff0060', bg: 'rgba(255,0,96,0.1)', border: 'rgba(255,0,96,0.3)' };
 };
 
-// ── Single result card ─────────────────────────────────────────────────────────
 const ResultCard = ({ result, buildTitle, dark }) => {
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor  = dark ? '#a3bdcc' : '#677483';
@@ -35,7 +30,6 @@ const ResultCard = ({ result, buildTitle, dark }) => {
       boxShadow: dark ? '0 4px 24px rgba(0,0,0,0.3)' : '0 4px 24px rgba(132,139,200,0.12)',
       fontFamily: 'Poppins, sans-serif',
     }}>
-      {/* Header */}
       <div style={{
         padding: '1.2rem 1.5rem',
         background: `linear-gradient(135deg, ${vs.bg}, transparent)`,
@@ -57,9 +51,7 @@ const ResultCard = ({ result, buildTitle, dark }) => {
         </div>
       </div>
 
-      {/* Body */}
       <div style={{ padding: '1.4rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-        {/* FPS — supports both fps_prediction (new task) and predicted_fps (log history) */}
         {(result.fps_prediction || result.predicted_fps) && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '0.8rem',
@@ -77,7 +69,6 @@ const ResultCard = ({ result, buildTitle, dark }) => {
           </div>
         )}
 
-        {/* Risks */}
         {result.risks?.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
@@ -92,7 +83,6 @@ const ResultCard = ({ result, buildTitle, dark }) => {
           </div>
         )}
 
-        {/* Recommendations */}
         {result.recommendations?.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
@@ -111,7 +101,6 @@ const ResultCard = ({ result, buildTitle, dark }) => {
   );
 };
 
-// ── History item (collapsible) ─────────────────────────────────────────────────
 const HistoryItem = ({ log, dark }) => {
   const [open, setOpen] = useState(false);
   const subColor = dark ? '#a3bdcc' : '#677483';
@@ -156,7 +145,6 @@ const HistoryItem = ({ log, dark }) => {
   );
 };
 
-// ── Main AIAnalyzer ────────────────────────────────────────────────────────────
 const AIAnalyzer = ({ dark, preloadedResult }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,14 +158,12 @@ const AIAnalyzer = ({ dark, preloadedResult }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  // When a new preloadedResult arrives, scroll to top
   const latestBuildTitle = history.find(h => h.build_id === preloadedResult?.build_id)?.build_title;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem', fontFamily: 'Poppins, sans-serif' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Latest result — shown when navigated from toast */}
       {preloadedResult && (
         <div>
           <p style={{ fontSize: '0.72rem', fontWeight: 600, color: subColor, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.8rem' }}>
@@ -187,7 +173,6 @@ const AIAnalyzer = ({ dark, preloadedResult }) => {
         </div>
       )}
 
-      {/* History */}
       <div>
         <p style={{ fontSize: '0.72rem', fontWeight: 600, color: subColor, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.8rem' }}>
           Історія аналізів

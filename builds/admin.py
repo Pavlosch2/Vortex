@@ -9,6 +9,7 @@ from .models import (
     SupportTicket,
     TicketReply,
     TicketScreenshot,
+    Notification,
 )
 
 
