@@ -823,7 +823,18 @@ const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggl
 
         <div className="bcard__body">
           <h3 className="bcard__title" style={{ color: textColor }}>{build.title}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <StarRating value={build.rating} />
+              <span style={{
+              fontSize: '0.68rem',
+              color: subColor,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+            }}>
+              <Download size={11} /> {build.download_count ?? 0}
+            </span>
+          </div>
           <button className="bcard__fav" onClick={e => { e.stopPropagation(); onFavoriteToggle(build.id); }}>
             <Star size={13} fill={build.is_favorite ? '#f7d060' : 'none'} color={build.is_favorite ? '#f7d060' : 'rgba(255,255,255,0.8)'} />
           </button>
@@ -1199,6 +1210,16 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
   const [activeTag, setActiveTag] = useState('');
   const [allTags, setAllTags] = useState([]);
   const [installBuild, setInstallBuild] = useState(null);
+  const handleInstall = useCallback((build) => {
+    setInstallBuild(build);
+    axios.post(`${API}/builds/${build.id}/download/`, {}, {
+      headers: getToken() ? auth() : {},
+    }).then(res => {
+      setBuilds(prev => prev.map(b =>
+        b.id === build.id ? { ...b, download_count: res.data.download_count } : b
+      ));
+    }).catch(() => {});
+  }, []);
   const [analyzingId, setAnalyzingId] = useState(null);
   const [selectedBuild, setSelectedBuild] = useState(null);
   const [subSection, setSubSection] = useState('list');
@@ -1371,7 +1392,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
         {activeType === 'rating' ? (
           <RatingTab
             dark={dark}
-            onInstall={setInstallBuild}
+            onInstall={handleInstall}
             onAnalyze={handleAnalyze}
             analyzingId={analyzingId}
             specsExist={specsExist}
@@ -1395,7 +1416,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
               <BuildCard key={b.id} build={b} dark={dark}
                 selected={selectedBuild?.id === b.id}
                 onSelect={handleSelect}
-                onInstall={setInstallBuild}
+                onInstall={handleInstall}
                 onFavoriteToggle={handleFavorite}
                 onAnalyze={handleAnalyze}
                 analyzing={analyzingId}
@@ -1446,7 +1467,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
             build={selectedBuild}
             dark={dark}
             onClose={() => setSelectedBuild(null)}
-            onInstall={setInstallBuild}
+            onInstall={handleInstall}
             onAnalyze={handleAnalyze}
             analyzing={analyzingId}
             token={localStorage.getItem('vortex_token')}

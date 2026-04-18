@@ -131,6 +131,7 @@ class BuildSerializer(serializers.ModelSerializer):
             "review_count",
             "post_count",
             "user_review",
+            "download_count",
         ]
 
     def get_images(self, obj):

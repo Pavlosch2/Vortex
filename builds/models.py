@@ -95,6 +95,7 @@ class Build(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     archive_url = models.URLField(blank=True, null=True)
     archive_identifier = models.CharField(max_length=255, blank=True, null=True)
+    download_count = models.PositiveIntegerField(default=0, verbose_name="Завантажень")
 
     def save(self, *args, **kwargs):
         is_new = not self.pk

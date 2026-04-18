@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
+from django.db import models
 
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
@@ -652,6 +653,14 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             BuildSerializer(top, many=True, context={"request": request}).data
         )
+    
+    @action(detail=True, methods=["post"], permission_classes=[])
+    def download(self, request, pk=None):
+        Build.objects.filter(pk=pk).update(
+            download_count=models.F("download_count") + 1
+        )
+        count = Build.objects.filter(pk=pk).values_list("download_count", flat=True).first()
+        return Response({"download_count": count})
 
 
 def _run_sync(task):
