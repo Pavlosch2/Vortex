@@ -403,7 +403,9 @@ def get_compatibility_analysis(pc_specs, build) -> dict:
             f"АПАРАТНЕ ЗАБЕЗПЕЧЕННЯ КОРИСТУВАЧА:\n"
             f"  CPU: {pc_specs.cpu_model}\n"
             f"  GPU: {pc_specs.gpu_model}\n"
-            f"  RAM: {pc_specs.ram_gb} GB\n\n"
+            f"  RAM: {pc_specs.ram_gb} GB"
+            + (f" @ {pc_specs.ram_mhz} MHz" if getattr(pc_specs, 'ram_mhz', None) else "")
+            + "\n\n"
             f"{'='*12}\n\n"
             f"{build_ctx}\n\n"
             f"{'='*12}\n\n"
@@ -482,7 +484,9 @@ def ai_search_builds(query: str, builds_data: list, pc_specs=None) -> list:
                 f"\nПК користувача:\n"
                 f"  CPU: {pc_specs.cpu_model}\n"
                 f"  GPU: {pc_specs.gpu_model}\n"
-                f"  RAM: {pc_specs.ram_gb} GB\n"
+                f"  RAM: {pc_specs.ram_gb} GB"
+                + (f" @ {pc_specs.ram_mhz} MHz" if getattr(pc_specs, 'ram_mhz', None) else "")
+                + "\n\n"
                 f"(враховуй теги Low-PC/High-PC щодо сумісності з цим залізом)\n"
             )
 

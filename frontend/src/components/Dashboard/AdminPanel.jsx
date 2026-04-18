@@ -784,25 +784,281 @@ const BuildsTab = ({ dark, currentRole, addToast }) => {
   );
 };
 
+const BLOCK_DURATIONS = [
+  { value: '1d', label: '1 день' },
+  { value: '3d', label: '3 дні' },
+  { value: '7d', label: '7 днів' },
+  { value: '30d', label: '30 днів' },
+  { value: 'permanent', label: 'Перманентне блокування (назавжди)' },
+];
+ 
+const WarnBlockModal = ({ user, dark, onClose, onDone, addToast, warningId }) => {
+  const [reason, setReason] = useState('');
+  const [step, setStep] = useState('form');
+  const [duration, setDuration] = useState('');
+  const [acting, setActing] = useState(false);
+ 
+  const theme = dark ? 'dark' : 'light';
+  const textColor = dark ? '#edeffd' : '#363949';
+  const subColor = dark ? '#a3bdcc' : '#677483';
+  const bg = dark ? 'rgba(20,22,28,0.98)' : 'rgba(255,255,255,0.98)';
+  const border = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(132,139,200,0.2)';
+ 
+  const canAct = reason.trim().length > 0;
+ 
+  const sendWarning = async () => {
+    setActing(true);
+    try {
+      await axios.post(`${API}/admin/users/${user.id}/warn/`, { reason }, { headers: auth() });
+      addToast({ type: 'success', message: `Попередження надіслано «${user.username}»`, duration: 4000 });
+      onDone();
+    } catch {
+      addToast({ type: 'error', message: 'Помилка при надсиланні попередження', duration: 4000 });
+    }
+    setActing(false);
+    onClose();
+  };
+ 
+  const doBlock = async () => {
+    if (!duration) return;
+    setActing(true);
+    try {
+      await axios.post(`${API}/admin/users/${user.id}/block/`, {
+        reason,
+        duration,
+        ...(warningId ? { warning_id: warningId } : {}),
+      }, { headers: auth() });
+      addToast({ type: 'success', message: `«${user.username}» заблоковано`, duration: 4000 });
+      onDone();
+    } catch {
+      addToast({ type: 'error', message: 'Помилка при блокуванні', duration: 4000 });
+    }
+    setActing(false);
+    onClose();
+  };
+ 
+  return (
+    <div className="wbm-overlay" onClick={onClose}>
+      <div className="wbm-modal" style={{ background: bg, border }} onClick={e => e.stopPropagation()}>
+        <p className="wbm-desc" style={{ color: subColor }}>
+          Ви збираєтесь застосувати санкції до користувача{' '}
+          <strong style={{ color: textColor }}>«{user.username}»</strong>.
+          Вкажіть причину порушення у полі нижче — вона буде збережена в системі та надіслана користувачу.
+        </p>
+        <textarea
+          className={`wbm-textarea ${theme}`}
+          style={{ color: textColor }}
+          placeholder="Причина порушення..."
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={3}
+        />
+ 
+        {step === 'form' && (
+          <div className="wbm-actions">
+            <button className="ap-btn ap-btn--warn" disabled={!canAct || acting} onClick={sendWarning}>
+              {acting ? <Loader size={13} className="spin" /> : '⚠️'} Надіслати попередження
+            </button>
+            <button className="ap-btn ap-btn--block-now" disabled={!canAct} onClick={() => setStep('duration')}>
+              🚫 Заблокувати одразу
+            </button>
+            <button className="ap-btn ap-btn--cancel" onClick={onClose}>Скасувати</button>
+          </div>
+        )}
+ 
+        {step === 'duration' && (
+          <div className="wbm-duration-step">
+            <p className="wbm-duration-label" style={{ color: subColor }}>Оберіть термін блокування:</p>
+            <div className="wbm-duration-list">
+              {BLOCK_DURATIONS.map(d => (
+                <button
+                  key={d.value}
+                  className={`wbm-duration-btn ${duration === d.value ? 'selected' : ''} ${theme}`}
+                  style={{ color: textColor }}
+                  onClick={() => setDuration(d.value)}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <div className="wbm-actions">
+              <button className="ap-btn ap-btn--block-now" disabled={!duration || acting} onClick={doBlock}>
+                {acting ? <Loader size={13} className="spin" /> : '🚫'} Підтвердити блокування
+              </button>
+              <button className="ap-btn ap-btn--cancel" onClick={() => setStep('form')}>← Назад</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const WarningsTab = ({ dark, currentRole, addToast }) => {
+  const [warnings, setWarnings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [blockModal, setBlockModal] = useState(null);
+  const [now, setNow] = useState(Date.now());
+ 
+  const theme = dark ? 'dark' : 'light';
+  const textColor = dark ? '#edeffd' : '#363949';
+  const subColor = dark ? '#a3bdcc' : '#677483';
+  const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.18)';
+  const cardBg = dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.85)';
+ 
+  const canModerate = currentRole === 'admin' || currentRole === 'manager';
+ 
+  useEffect(() => {
+    if (!canModerate) return;
+    fetchWarnings();
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [canModerate]);
+ 
+  const fetchWarnings = () => {
+    setLoading(true);
+    axios.get(`${API}/admin/warnings/`, { headers: auth() })
+      .then(r => setWarnings(r.data))
+      .finally(() => setLoading(false));
+  };
+ 
+  const deleteWarning = async (id, username) => {
+    if (!window.confirm(`Видалити попередження для користувача ${username}? Цю дію не можна скасувати`)) return;
+    try {
+      await axios.delete(`${API}/admin/warnings/${id}/`, { headers: auth() });
+      setWarnings(prev => prev.filter(w => w.id !== id));
+      addToast({ type: 'success', message: 'Попередження видалено', duration: 3000 });
+    } catch {
+      addToast({ type: 'error', message: 'Помилка видалення', duration: 3000 });
+    }
+  };
+ 
+  const formatCountdown = (seconds) => {
+    if (seconds <= 0) return '00:00:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+ 
+  const getLiveSeconds = (w) => {
+    if (w.status !== 'active') return 0;
+    return Math.max(0, Math.floor((new Date(w.expires_at) - now) / 1000));
+  };
+ 
+  const STATUS_STYLE = {
+    active:   { label: '🟡 Активне',     color: '#f7d060' },
+    expired:  { label: '🔴 Прострочене', color: '#e05252' },
+    executed: { label: '✅ Виконане',     color: '#1B9c85' },
+  };
+ 
+  if (!canModerate) return (
+    <div className="ap-lock" style={{ color: subColor }}>
+      <div className="ap-lock-icon"><Lock size={36} /></div>
+      <p>Доступно тільки адміністраторам та менеджерам</p>
+    </div>
+  );
+ 
+  if (loading) return <div className="ap-loader"><Loader size={24} className="spin" color="#6c9bcf" /></div>;
+ 
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0 0.75rem' }}>
+        <button className="ap-refresh" style={{ color: subColor }} onClick={fetchWarnings}>
+          <RefreshCw size={14} /> Оновити
+        </button>
+      </div>
+ 
+      {warnings.length === 0 ? (
+        <p className="ap-empty" style={{ color: subColor }}>Попереджень немає</p>
+      ) : (
+        <div className="ap-list">
+          {warnings.map(w => {
+            const st = STATUS_STYLE[w.status] || STATUS_STYLE.active;
+            const liveSeconds = getLiveSeconds(w);
+            return (
+              <div key={w.id} className="ap-card" style={{ background: cardBg, border }}>
+                <div className="ap-warn-row">
+                  <div className="ap-warn-info">
+                    <div className="ap-warn-header">
+                      <span className="ap-warn-user" style={{ color: textColor }}>👤 {w.user_name}</span>
+                      <span className="ap-warn-status" style={{ color: st.color }}>{st.label}</span>
+                      {w.status === 'active' && (
+                        <span className="ap-warn-countdown" style={{ color: '#f7d060' }}>
+                          ⏱ {formatCountdown(liveSeconds)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="ap-warn-reason" style={{ color: subColor }}>
+                      Причина: <span style={{ color: textColor }}>{w.reason}</span>
+                    </p>
+                    <p className="ap-warn-meta" style={{ color: subColor }}>
+                      Надіслав: {w.issued_by_name} · {new Date(w.created_at).toLocaleDateString('uk-UA')}
+                    </p>
+                  </div>
+                  <div className="ap-warn-actions">
+                    {w.status === 'expired' && (
+                      <button
+                        className="ap-btn ap-btn--block"
+                        onClick={() => setBlockModal({ user: { id: null, username: w.user_name }, warningId: w.id, userName: w.user_name })}
+                      >
+                        🚫 Заблокувати
+                      </button>
+                    )}
+                    {w.status === 'active' && (
+                      <button className="ap-btn ap-btn--block-disabled" disabled title="Доступно після завершення терміну попередження">
+                        🚫 Заблокувати
+                      </button>
+                    )}
+                    {w.status !== 'executed' && (
+                      <button className="ap-btn ap-btn--delete" onClick={() => deleteWarning(w.id, w.user_name)}>
+                        <Trash2 size={12} /> Видалити
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+ 
+      {blockModal && (
+        <WarnBlockModal
+          user={{ id: blockModal.user.id, username: blockModal.userName }}
+          dark={dark}
+          addToast={addToast}
+          warningId={blockModal.warningId}
+          onClose={() => setBlockModal(null)}
+          onDone={() => { fetchWarnings(); setBlockModal(null); }}
+        />
+      )}
+    </>
+  );
+};
+
 const UsersTab = ({ dark, currentRole, addToast }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [patch, setPatch] = useState({});
   const [saving, setSaving] = useState(null);
-
+  const [modalUser, setModalUser] = useState(null);
+ 
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.18)';
-
+ 
+  const canModerate = currentRole === 'admin' || currentRole === 'manager';
+ 
   useEffect(() => {
-    if (currentRole !== 'admin') return;
+    if (!canModerate) return;
     axios.get(`${API}/admin/users/`, { headers: auth() })
       .then(r => setUsers(r.data))
       .finally(() => setLoading(false));
-  }, [currentRole]);
-
+  }, [canModerate]);
+ 
   const save = async (id) => {
     setSaving(id);
     try {
@@ -812,7 +1068,7 @@ const UsersTab = ({ dark, currentRole, addToast }) => {
       setPatch({});
     } finally { setSaving(null); }
   };
-
+ 
   const deleteUser = (id, username) => {
     const snapshot = users.find(u => u.id === id);
     setUsers(prev => prev.filter(u => u.id !== id));
@@ -834,82 +1090,131 @@ const UsersTab = ({ dark, currentRole, addToast }) => {
       onCancel: () => { cancelled = true; clearTimeout(timer); setUsers(prev => [...prev, snapshot].sort((a, b) => a.id - b.id)); },
     });
   };
-
-  if (currentRole !== 'admin') return (
+ 
+  const unblock = async (id, username) => {
+    try {
+      await axios.post(`${API}/admin/users/${id}/unblock/`, {}, { headers: auth() });
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_blocked: false } : u));
+      addToast({ type: 'success', message: `«${username}» розблоковано`, duration: 3000 });
+    } catch {
+      addToast({ type: 'error', message: 'Помилка розблокування', duration: 3000 });
+    }
+  };
+ 
+  if (!canModerate) return (
     <div className="ap-lock" style={{ color: subColor }}>
       <div className="ap-lock-icon"><Lock size={36} /></div>
-      <p>Доступно тільки адміністраторам</p>
+      <p>Доступно тільки адміністраторам та менеджерам</p>
     </div>
   );
-
+ 
   if (loading) return (
     <div className="ap-loader"><Loader size={24} className="spin" color="#6c9bcf" /></div>
   );
-
+ 
   return (
-    <div className="ap-users-list">
-      {users.map(u => {
-        const rm = ROLE_MAP[u.role] || ROLE_MAP.user;
-        const isEdit = editing === u.id;
-        return (
-          <div key={u.id} className="ap-user-row"
-            style={{ background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)', border }}>
-            <div className="ap-user-avatar">
-              {u.avatar
-                ? <img src={u.avatar} alt={u.username} />
-                : u.username[0].toUpperCase()
-              }
+    <>
+      <div className="ap-users-list">
+        {users.map(u => {
+          const rm = ROLE_MAP[u.role] || ROLE_MAP.user;
+          const isEdit = editing === u.id;
+          return (
+            <div key={u.id} className="ap-user-row"
+              style={{ background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)', border }}>
+              <div className="ap-user-avatar">
+                {u.avatar
+                  ? <img src={u.avatar} alt={u.username} />
+                  : u.username[0].toUpperCase()
+                }
+              </div>
+              <div className="ap-user-info">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span className="ap-user-name" style={{ color: textColor }}>{u.username}</span>
+                  <span className="ap-user-role" style={{ color: rm.color }}>{rm.icon} {rm.label}</span>
+                  {u.is_blocked && (
+                    <span className="ap-user-blocked-badge">🚫 Заблоковано</span>
+                  )}
+                </div>
+                <p className="ap-user-meta" style={{ color: subColor }}>
+                  {u.email || 'email не вказано'} · {u.ai_credits} AI кредитів
+                  {u.is_premium && <span className="ap-user-premium">⚡ Premium</span>}
+                </p>
+              </div>
+              {isEdit ? (
+                <div className="ap-user-edit">
+                  {currentRole === 'admin' && (
+                    <select className={`ap-select ${theme}`} style={{ color: textColor }}
+                      defaultValue={u.role} onChange={e => setPatch(p => ({ ...p, role: e.target.value }))}>
+                      <option value="user">Користувач</option>
+                      <option value="manager">Менеджер</option>
+                      <option value="admin">Адмін</option>
+                    </select>
+                  )}
+                  {currentRole === 'admin' && (
+                    <input type="number" min={0} placeholder="AI кредити"
+                      className={`ap-credits-input ${theme}`} style={{ color: textColor }}
+                      defaultValue={u.ai_credits}
+                      onChange={e => setPatch(p => ({ ...p, ai_credits: parseInt(e.target.value) }))} />
+                  )}
+                  {currentRole === 'admin' && (
+                    <label className="ap-premium-label" style={{ color: subColor }}>
+                      <input type="checkbox" defaultChecked={u.is_premium}
+                        onChange={e => setPatch(p => ({ ...p, is_premium: e.target.checked }))} /> Premium
+                    </label>
+                  )}
+                  {currentRole === 'admin' && (
+                    <button className="ap-btn ap-btn--save" disabled={saving === u.id} onClick={() => save(u.id)}>
+                      {saving === u.id ? <Loader size={12} className="spin" /> : 'Зберегти'}
+                    </button>
+                  )}
+                  <button className="ap-btn ap-btn--cancel-edit" style={{ color: subColor }}
+                    onClick={() => { setEditing(null); setPatch({}); }}>✕</button>
+                </div>
+              ) : (
+                <div className="ap-user-actions">
+                  {currentRole === 'admin' && (
+                    <button className="ap-btn ap-btn--edit"
+                      style={{ border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(108,155,207,0.25)', color: subColor }}
+                      onClick={() => setEditing(u.id)}>
+                      Редагувати
+                    </button>
+                  )}
+                  {u.is_blocked ? (
+                    <button className="ap-btn ap-btn--unblock" onClick={() => unblock(u.id, u.username)}>
+                      ✅ Розблокувати
+                    </button>
+                  ) : (
+                    <button className="ap-btn ap-btn--block" onClick={() => setModalUser(u)}>
+                      🚫 Санкції
+                    </button>
+                  )}
+                  {currentRole === 'admin' && (
+                    <button className="ap-btn ap-btn--delete-user" onClick={() => deleteUser(u.id, u.username)}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="ap-user-info">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="ap-user-name" style={{ color: textColor }}>{u.username}</span>
-                <span className="ap-user-role" style={{ color: rm.color }}>{rm.icon} {rm.label}</span>
-              </div>
-              <p className="ap-user-meta" style={{ color: subColor }}>
-                {u.email || 'email не вказано'} · {u.ai_credits} AI кредитів
-                {u.is_premium && <span className="ap-user-premium">⚡ Premium</span>}
-              </p>
-            </div>
-            {isEdit ? (
-              <div className="ap-user-edit">
-                <select className={`ap-select ${theme}`} style={{ color: textColor }}
-                  defaultValue={u.role} onChange={e => setPatch(p => ({ ...p, role: e.target.value }))}>
-                  <option value="user">Користувач</option>
-                  <option value="manager">Менеджер</option>
-                  <option value="admin">Адмін</option>
-                </select>
-                <input type="number" min={0} placeholder="AI кредити"
-                  className={`ap-credits-input ${theme}`} style={{ color: textColor }}
-                  defaultValue={u.ai_credits}
-                  onChange={e => setPatch(p => ({ ...p, ai_credits: parseInt(e.target.value) }))} />
-                <label className="ap-premium-label" style={{ color: subColor }}>
-                  <input type="checkbox" defaultChecked={u.is_premium}
-                    onChange={e => setPatch(p => ({ ...p, is_premium: e.target.checked }))} /> Premium
-                </label>
-                <button className="ap-btn ap-btn--save" disabled={saving === u.id} onClick={() => save(u.id)}>
-                  {saving === u.id ? <Loader size={12} className="spin" /> : 'Зберегти'}
-                </button>
-                <button className="ap-btn ap-btn--cancel-edit" style={{ color: subColor }}
-                  onClick={() => { setEditing(null); setPatch({}); }}>✕</button>
-              </div>
-            ) : (
-              <div className="ap-user-actions">
-                <button className="ap-btn ap-btn--edit"
-                  style={{ border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(108,155,207,0.25)', color: subColor }}
-                  onClick={() => setEditing(u.id)}>
-                  Редагувати
-                </button>
-                <button className="ap-btn ap-btn--delete-user" onClick={() => deleteUser(u.id, u.username)}>
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+ 
+      {modalUser && (
+        <WarnBlockModal
+          user={modalUser}
+          dark={dark}
+          addToast={addToast}
+          onClose={() => setModalUser(null)}
+          onDone={() => {
+            axios.get(`${API}/admin/users/`, { headers: auth() }).then(r => setUsers(r.data));
+          }}
+        />
+      )}
+    </>
   );
 };
+ 
 
 const AdminPanel = ({ dark, currentRole, addToast }) => {
   const [tab, setTab] = useState('submissions');
@@ -920,9 +1225,10 @@ const AdminPanel = ({ dark, currentRole, addToast }) => {
   const tabs = [
     { id: 'submissions', label: 'Заявки', icon: <Package size={15} /> },
     { id: 'support', label: 'Підтримка', icon: <HeadphonesIcon size={15} /> },
-    { id: 'builds', label: 'Збірки', icon: <Database size={15} />, adminOnly: true },
-    { id: 'users', label: 'Користувачі', icon: <Users size={15} />, adminOnly: true },
-  ].filter(t => !t.adminOnly || currentRole === 'admin');
+    { id: 'builds', label: 'Збірки', icon: <Database size={15} /> },
+    { id: 'users', label: 'Користувачі', icon: <Users size={15} /> },
+    { id: 'warnings', label: 'Попередження', icon: <Shield size={15} /> },
+  ];
 
   return (
     <div className="ap-root">
@@ -945,6 +1251,7 @@ const AdminPanel = ({ dark, currentRole, addToast }) => {
       {tab === 'support' && <SupportTab dark={dark} addToast={addToast} />}
       {tab === 'builds' && <BuildsTab dark={dark} currentRole={currentRole} addToast={addToast} />}
       {tab === 'users' && <UsersTab dark={dark} currentRole={currentRole} addToast={addToast} />}
+      {tab === 'warnings' && <WarningsTab dark={dark} currentRole={currentRole} addToast={addToast} />}
     </div>
   );
 };

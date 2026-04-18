@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.db.models import Avg
+from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 
 from rest_framework import generics, status, viewsets
@@ -22,6 +22,10 @@ from .models import (
     TicketReply,
     TicketScreenshot,
     Notification,
+    UserWarning,
+    UserBlock,
+    AppealChat,
+    AppealMessage,
 )
 from .serializers import (
     AIAnalysisLogSerializer,
@@ -39,6 +43,10 @@ from .serializers import (
     TicketReplySerializer,
     UserAdminSerializer,
     NotificationSerializer,
+    UserWarningSerializer, 
+    UserBlockSerializer, 
+    AppealMessageSerializer, 
+    AppealChatSerializer,
 )
 
 from .notify import (
@@ -62,28 +70,63 @@ def is_staff(user):
 def is_admin(user):
     return get_role(user) == "admin"
 
-
 class BuildViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BuildSerializer
-
+ 
     def get_queryset(self):
+        from django.db.models import Avg, Count
+ 
         qs = Build.objects.filter(is_public=True).prefetch_related(
-            "components", "images"
+            "images", "components", "reviews", "posts"
+        ).annotate(
+            avg_rating=Avg("reviews__score"),
+            total_reviews=Count("reviews"),
         )
+ 
         t = self.request.query_params.get("type")
-        if t in ("build", "script"):
+        if t:
             qs = qs.filter(build_type=t)
+ 
         tag = self.request.query_params.get("tag")
         if tag:
             qs = qs.filter(tags__icontains=tag)
+ 
         if self.request.query_params.get("favorites") == "1":
             if self.request.user.is_authenticated:
                 fav_ids = self.request.user.favorites.values_list("build_id", flat=True)
                 qs = qs.filter(id__in=fav_ids)
-            else:
-                qs = qs.none()
-        return qs
 
+        sort = self.request.query_params.get("sort")
+        if sort == "rating_desc":
+            qs = qs.order_by("-avg_rating", "-total_reviews", "-created_at")
+        elif sort == "rating_asc":
+            qs = qs.order_by("avg_rating", "total_reviews", "-created_at")
+        elif sort == "reviews_desc":
+            qs = qs.order_by("-total_reviews", "-avg_rating", "-created_at")
+        elif sort == "reviews_asc":
+            qs = qs.order_by("total_reviews", "avg_rating", "-created_at")
+        else:
+            qs = qs.order_by("-created_at")
+ 
+        min_reviews = self.request.query_params.get("min_reviews")
+        if min_reviews and min_reviews.isdigit():
+            qs = qs.filter(total_reviews__gte=int(min_reviews))
+ 
+        rating_min = self.request.query_params.get("rating_min")
+        rating_max = self.request.query_params.get("rating_max")
+        if rating_min:
+            try:
+                qs = qs.filter(avg_rating__gte=float(rating_min))
+            except ValueError:
+                pass
+        if rating_max:
+            try:
+                qs = qs.filter(avg_rating__lte=float(rating_max))
+            except ValueError:
+                pass
+ 
+        return qs
+ 
     def get_serializer_context(self):
         return {"request": self.request}
 
@@ -1121,7 +1164,68 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
+ 
+    def perform_create(self, serializer):
+        from django.conf import settings
+        from django.contrib.auth.tokens import default_token_generator
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+ 
+        user = serializer.save()
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+ 
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        confirm_url = f"{frontend_url}/confirm-email/{uid}/{token}/"
+ 
+        html = render_to_string(
+            "registration/vortex_email_confirm.html",
+            {
+                "username": user.username,
+                "confirm_url": confirm_url,
+            },
+        )
+ 
+        send_mail(
+            subject="VortexPro — підтвердження email",
+            message=f"Підтвердіть вашу пошту: {confirm_url}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html,
+            fail_silently=False,
+        )
 
+
+class EmailConfirmView(APIView):
+    """GET /api/auth/confirm-email/<uid>/<token>/"""
+    permission_classes = (AllowAny,)
+ 
+    def get(self, request, uid, token):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.http import urlsafe_base64_decode
+        from django.utils.encoding import force_str
+ 
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return Response({"error": "Невірне посилання"}, status=400)
+ 
+        if user.is_active:
+            return Response({"detail": "Email вже підтверджено"})
+ 
+        if not default_token_generator.check_token(user, token):
+            return Response({"error": "Посилання недійсне або закінчився термін дії"}, status=400)
+ 
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+ 
+        return Response({"detail": "Email підтверджено. Тепер ви можете увійти."})
+    
 
 class PasswordResetRequestView(APIView):
     """POST /api/auth/password-reset/"""
@@ -1260,3 +1364,271 @@ class NotificationDeleteAllView(APIView):
     def delete(self, request):
         Notification.objects.filter(user=request.user).delete()
         return Response(status=204)
+    
+
+class AdminWarnUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        from django.utils import timezone
+        from datetime import timedelta
+        user = get_object_or_404(User, pk=user_id)
+        if user == request.user:
+            return Response({"error": "Не можна попередити самого себе"}, status=400)
+        reason = request.data.get("reason", "").strip()
+        if not reason:
+            return Response({"error": "Вкажіть причину"}, status=400)
+        warning = UserWarning.objects.create(
+            user=user,
+            issued_by=request.user,
+            reason=reason,
+            expires_at=timezone.now() + timedelta(hours=24),
+        )
+        from .notify import notify_moderation_warning
+        notify_moderation_warning(user, request.user, reason)
+        return Response(UserWarningSerializer(warning).data, status=201)
+
+
+class AdminBlockUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        from django.utils import timezone
+        from datetime import timedelta
+        user = get_object_or_404(User, pk=user_id)
+        if user == request.user:
+            return Response({"error": "Не можна заблокувати самого себе"}, status=400)
+        reason = request.data.get("reason", "").strip()
+        duration = request.data.get("duration")
+        warning_id = request.data.get("warning_id")
+        if not reason:
+            return Response({"error": "Вкажіть причину"}, status=400)
+
+        DURATIONS = {"1d": 1, "3d": 3, "7d": 7, "30d": 30}
+        is_permanent = duration == "permanent"
+        blocked_until = None
+        if not is_permanent:
+            days = DURATIONS.get(duration)
+            if not days:
+                return Response({"error": "Невірний термін блокування"}, status=400)
+            blocked_until = timezone.now() + timedelta(days=days)
+
+        UserBlock.objects.filter(user=user).delete()
+        warning = None
+        if warning_id:
+            try:
+                warning = UserWarning.objects.get(pk=warning_id, user=user)
+                warning.status = "executed"
+                warning.save(update_fields=["status"])
+            except UserWarning.DoesNotExist:
+                pass
+
+        block = UserBlock.objects.create(
+            user=user,
+            blocked_by=request.user,
+            reason=reason,
+            is_permanent=is_permanent,
+            blocked_until=blocked_until,
+            warning=warning,
+        )
+        return Response(UserBlockSerializer(block).data, status=201)
+
+
+class AdminUnblockUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        user = get_object_or_404(User, pk=user_id)
+        UserBlock.objects.filter(user=user).delete()
+        try:
+            chat = user.appeal
+            chat.is_closed = True
+            chat.save(update_fields=["is_closed"])
+            Notification.objects.create(
+                user=user,
+                type="moderation_warning",
+                body="Вашу апеляцію розглянуто. Блокування знято.",
+                link_type="",
+                link_params={},
+            )
+        except Exception:
+            pass
+        return Response({"ok": True})
+
+
+class AdminWarningListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        from django.utils import timezone
+        warnings = UserWarning.objects.select_related("user", "issued_by").all()
+        for w in warnings:
+            w.refresh_status()
+        data = UserWarningSerializer(warnings, many=True).data
+        return Response(data)
+
+
+class AdminWarningDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, warning_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        w = get_object_or_404(UserWarning, pk=warning_id)
+        if w.status == "executed":
+            return Response({"error": "Не можна видалити виконане попередження"}, status=400)
+        w.delete()
+        return Response(status=204)
+
+
+class BlockStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+        try:
+            block = request.user.block
+            if not block.is_active():
+                block.delete()
+                return Response({"blocked": False})
+            return Response({
+                "blocked": True,
+                "reason": block.reason,
+                "is_permanent": block.is_permanent,
+                "blocked_until": block.blocked_until,
+            })
+        except UserBlock.DoesNotExist:
+            return Response({"blocked": False})
+
+
+class AppealChatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            block = request.user.block
+        except UserBlock.DoesNotExist:
+            return Response({"error": "Не заблоковано"}, status=400)
+        chat, _ = AppealChat.objects.get_or_create(user=request.user, defaults={"block": block})
+        return Response(AppealChatSerializer(chat).data)
+
+    def post(self, request):
+        try:
+            block = request.user.block
+        except UserBlock.DoesNotExist:
+            return Response({"error": "Не заблоковано"}, status=400)
+        chat, _ = AppealChat.objects.get_or_create(user=request.user, defaults={"block": block})
+        if chat.is_closed:
+            return Response({"error": "Чат закрито"}, status=400)
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response({"error": "Порожнє повідомлення"}, status=400)
+        msg = AppealMessage.objects.create(chat=chat, author=request.user, text=text)
+        return Response(AppealMessageSerializer(msg).data, status=201)
+
+
+class AppealStaffView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        chats = AppealChat.objects.filter(is_closed=False).select_related("user", "block")
+        return Response(AppealChatSerializer(chats, many=True).data)
+
+    def post(self, request, chat_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        chat = get_object_or_404(AppealChat, pk=chat_id)
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response({"error": "Порожнє повідомлення"}, status=400)
+        msg = AppealMessage.objects.create(chat=chat, author=request.user, text=text)
+        return Response(AppealMessageSerializer(msg).data, status=201)
+
+
+class AppealResolveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, chat_id):
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
+        chat = get_object_or_404(AppealChat, pk=chat_id)
+        action = request.data.get("action")
+
+        if action == "unblock":
+            UserBlock.objects.filter(user=chat.user).delete()
+            chat.is_closed = True
+            chat.save(update_fields=["is_closed"])
+            Notification.objects.create(
+                user=chat.user,
+                type="moderation_warning",
+                body="Вашу апеляцію розглянуто. Блокування знято.",
+                link_type="",
+                link_params={},
+            )
+            return Response({"ok": True, "unblocked": True})
+
+        if action == "close":
+            chat.is_closed = True
+            chat.save(update_fields=["is_closed"])
+            Notification.objects.create(
+                user=chat.user,
+                type="moderation_warning",
+                body="Вашу апеляцію розглянуто. Рішення про блокування залишено в силі.",
+                link_type="",
+                link_params={},
+            )
+            return Response({"ok": True, "unblocked": False})
+
+        return Response({"error": "Вкажіть action: unblock або close"}, status=400)
+    
+
+class PCSpecsAutoView(APIView):
+    """
+    POST /api/specs/auto/
+    Викликається утилітою VortexSpecs.exe з токеном у заголовку.
+    Якщо у юзера вже є specs з pc_name що збігається — оновлює.
+    Якщо немає — створює новий запис.
+    """
+    permission_classes = [IsAuthenticated]
+ 
+    def post(self, request):
+        data = request.data
+        pc_name = data.get("pc_name", "").strip()
+ 
+        existing = PCSpecs.objects.filter(
+            user=request.user,
+            pc_name=pc_name,
+        ).first() if pc_name else None
+ 
+        if not existing:
+            existing = PCSpecs.objects.filter(user=request.user).first()
+ 
+        payload = {
+            "label": pc_name or "Мій ПК",
+            "pc_name": pc_name,
+            "cpu_model": data.get("cpu_model", "").strip(),
+            "gpu_model": data.get("gpu_model", "").strip(),
+            "ram_gb": int(data.get("ram_gb") or 0),
+            "ram_mhz": int(data.get("ram_mhz")) if data.get("ram_mhz") else None,
+            "is_active": True,
+        }
+ 
+        if existing:
+            for k, v in payload.items():
+                setattr(existing, k, v)
+            existing.save()
+            return Response(PCSpecsSerializer(existing).data)
+        else:
+            spec = PCSpecs.objects.create(user=request.user, **payload)
+            return Response(PCSpecsSerializer(spec).data, status=201)
+ 

@@ -18,6 +18,17 @@ from .views import (
     NotificationMarkAllReadView,
     NotificationDeleteView,
     NotificationDeleteAllView,
+    AdminWarnUserView,
+    AdminBlockUserView,
+    AdminUnblockUserView,
+    AdminWarningListView,
+    AdminWarningDeleteView,
+    BlockStatusView,
+    AppealChatView,
+    AppealStaffView,
+    AppealResolveView,
+    PCSpecsAutoView,
+    EmailConfirmView,
 )
 
 router = DefaultRouter()
@@ -28,6 +39,7 @@ router.register(r"support", SupportTicketViewSet, basename="support")
 router.register(r"admin/builds", AdminBuildViewSet, basename="admin-builds")
 
 urlpatterns = [
+    path("specs/auto/", PCSpecsAutoView.as_view(), name="specs-auto"),
     path("", include(router.urls)),
     path("profile/", ProfileView.as_view(), name="profile"),
     path("tasks/<int:task_id>/", AnalysisTaskView.as_view(), name="task-status"),
@@ -43,4 +55,14 @@ urlpatterns = [
     path("notifications/clear-all/", NotificationDeleteAllView.as_view(), name="notifications-clear-all"),
     path("notifications/<int:pk>/read/", NotificationMarkReadView.as_view(), name="notification-read"),
     path("notifications/<int:pk>/delete/", NotificationDeleteView.as_view(), name="notification-delete"),
+    path("admin/users/<int:user_id>/warn/", AdminWarnUserView.as_view(), name="admin-warn-user"),
+    path("admin/users/<int:user_id>/block/", AdminBlockUserView.as_view(), name="admin-block-user"),
+    path("admin/users/<int:user_id>/unblock/", AdminUnblockUserView.as_view(), name="admin-unblock-user"),
+    path("admin/warnings/", AdminWarningListView.as_view(), name="admin-warnings"),
+    path("admin/warnings/<int:warning_id>/", AdminWarningDeleteView.as_view(), name="admin-warning-delete"),
+    path("block-status/", BlockStatusView.as_view(), name="block-status"),
+    path("appeal/", AppealChatView.as_view(), name="appeal-chat"),
+    path("appeal/staff/", AppealStaffView.as_view(), name="appeal-staff"),
+    path("appeal/<int:chat_id>/message/", AppealStaffView.as_view(), name="appeal-staff-message"),
+    path("appeal/<int:chat_id>/resolve/", AppealResolveView.as_view(), name="appeal-resolve"),
 ]

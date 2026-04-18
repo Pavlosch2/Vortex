@@ -33,9 +33,11 @@ def create_user_profile(sender, instance, created, **kwargs):
 class PCSpecs(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_specs")
     label = models.CharField(max_length=100, default="Мій ПК")
+    pc_name = models.CharField(max_length=255, blank=True, verbose_name="Назва ПК")
     cpu_model = models.CharField(max_length=255, verbose_name="Процесор")
     gpu_model = models.CharField(max_length=255, verbose_name="Відеокарта")
     ram_gb = models.IntegerField(default=0, verbose_name="ОЗП (ГБ)")
+    ram_mhz = models.IntegerField(null=True, blank=True, verbose_name="Швидкість ОЗП (МГц)")
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -375,3 +377,94 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.type}] {self.user.username}: {self.body[:60]}"
+    
+class UserWarning(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Активне"),
+        ("expired", "Прострочене"),
+        ("executed", "Виконане"),
+    ]
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="warnings"
+    )
+    issued_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="issued_warnings"
+    )
+    reason = models.TextField(verbose_name="Причина порушення")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Попередження"
+        verbose_name_plural = "Попередження"
+
+    def __str__(self):
+        return f"Warning({self.user.username}, {self.status})"
+
+    def refresh_status(self):
+        from django.utils import timezone
+        if self.status == "active" and timezone.now() > self.expires_at:
+            self.status = "expired"
+            self.save(update_fields=["status"])
+
+
+class UserBlock(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="block"
+    )
+    blocked_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="issued_blocks"
+    )
+    reason = models.TextField(verbose_name="Причина блокування")
+    is_permanent = models.BooleanField(default=False)
+    blocked_until = models.DateTimeField(null=True, blank=True)
+    warning = models.ForeignKey(
+        UserWarning, on_delete=models.SET_NULL, null=True, blank=True, related_name="block"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Блокування"
+        verbose_name_plural = "Блокування"
+
+    def __str__(self):
+        return f"Block({self.user.username}, permanent={self.is_permanent})"
+
+    def is_active(self):
+        from django.utils import timezone
+        if self.is_permanent:
+            return True
+        return self.blocked_until and timezone.now() < self.blocked_until
+
+
+class AppealChat(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="appeal"
+    )
+    block = models.ForeignKey(
+        UserBlock, on_delete=models.CASCADE, related_name="appeal"
+    )
+    is_closed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Апеляція"
+        verbose_name_plural = "Апеляції"
+
+    def __str__(self):
+        return f"Appeal({self.user.username})"
+
+
+class AppealMessage(models.Model):
+    chat = models.ForeignKey(AppealChat, on_delete=models.CASCADE, related_name="messages")
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"AppealMsg({self.author.username})"

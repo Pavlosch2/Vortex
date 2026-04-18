@@ -11,6 +11,7 @@ from builds.views import (
     PasswordResetConfirmView,
     PasswordResetRequestView,
     RegisterView,
+    EmailConfirmView,
 )
 
 
@@ -62,7 +63,11 @@ urlpatterns = [
         PasswordResetConfirmView.as_view(),
         name="password_reset_confirm",
     ),
-    # ── Google OAuth (allauth) ───────────────────────────────────────
+    path(
+        "api/auth/confirm-email/<str:uid>/<str:token>/",
+        EmailConfirmView.as_view(),
+        name="email_confirm",
+    ),
     path("auth/", include("allauth.urls")),
     path("accounts/profile/", google_callback_redirect, name="google_done"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -46,7 +46,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
         password: regData.password,
         age,
       });
-      setInfo('Реєстрація успішна! Тепер увійдіть.');
+      setInfo('На вашу пошту надіслано листа з підтвердженням. Перейдіть за посиланням у листі, щоб активувати акаунт.');
       setView('login');
     } catch (err) {
       const d = err.response?.data || {};

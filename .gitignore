@@ -9,3 +9,4 @@ venv/
 db.sqlite3
 media/build_archives/
 media/torrents/
+media/submission_archives/

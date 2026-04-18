@@ -19,7 +19,11 @@ from .models import (
     SupportTicket,
     TicketReply,
     TicketScreenshot,
-    Notification
+    Notification,
+    UserWarning,
+    UserBlock,
+    AppealChat,
+    AppealMessage,
 )
 
 
@@ -78,7 +82,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 class PCSpecsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PCSpecs
-        fields = ["id", "cpu_model", "gpu_model", "ram_gb", "is_active"]
+        fields = ["id", "label", "pc_name", "cpu_model", "gpu_model", "ram_gb", "ram_mhz", "is_active"]
 
 
 class ComponentSerializer(serializers.ModelSerializer):
@@ -399,6 +403,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
     ai_credits = serializers.IntegerField(source="profile.ai_credits")
     is_premium = serializers.BooleanField(source="profile.is_premium")
     avatar = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -412,6 +417,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "is_premium",
             "avatar",
             "date_joined",
+            "is_blocked",
         ]
 
     def get_avatar(self, obj):
@@ -423,6 +429,12 @@ class UserAdminSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
+
+    def get_is_blocked(self, obj):
+        try:
+            return obj.block.is_active()
+        except Exception:
+            return False
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("profile", {})
@@ -447,3 +459,52 @@ class NotificationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "type", "actor_name", "title", "body", "link_type", "link_params", "created_at"]
+
+
+class UserWarningSerializer(serializers.ModelSerializer):
+    issued_by_name = serializers.CharField(source="issued_by.username", read_only=True)
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    time_left_seconds = serializers.SerializerMethodField()
+
+    def get_time_left_seconds(self, obj):
+        from django.utils import timezone
+        if obj.status != "active":
+            return 0
+        diff = (obj.expires_at - timezone.now()).total_seconds()
+        return max(0, int(diff))
+
+    class Meta:
+        model = UserWarning
+        fields = ["id", "user_name", "issued_by_name", "reason", "status", "created_at", "expires_at", "time_left_seconds"]
+
+
+class UserBlockSerializer(serializers.ModelSerializer):
+    blocked_by_name = serializers.CharField(source="blocked_by.username", read_only=True)
+
+    class Meta:
+        model = UserBlock
+        fields = ["id", "reason", "is_permanent", "blocked_until", "blocked_by_name", "created_at"]
+
+
+class AppealMessageSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.username", read_only=True)
+    is_staff = serializers.SerializerMethodField()
+
+    def get_is_staff(self, obj):
+        try:
+            return obj.author.profile.role in ("manager", "admin")
+        except Exception:
+            return False
+
+    class Meta:
+        model = AppealMessage
+        fields = ["id", "author_name", "is_staff", "text", "created_at"]
+
+
+class AppealChatSerializer(serializers.ModelSerializer):
+    messages = AppealMessageSerializer(many=True, read_only=True)
+    block = UserBlockSerializer(read_only=True)
+
+    class Meta:
+        model = AppealChat
+        fields = ["id", "is_closed", "created_at", "messages", "block"]

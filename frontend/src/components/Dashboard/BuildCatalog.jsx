@@ -25,6 +25,57 @@ const StarRating = ({ value }) => (
   </div>
 );
 
+const RatingBadge = ({ rating, reviewCount }) => {
+  const hasRating = reviewCount > 0;
+  let bg, color;
+  if (!hasRating) {
+    bg = 'rgba(0,0,0,0.55)';
+    color = '#a3bdcc';
+  } else if (rating >= 4.0) {
+    bg = 'rgba(27,156,133,0.75)';
+    color = '#fff';
+  } else if (rating >= 2.5) {
+    bg = 'rgba(200,160,0,0.8)';
+    color = '#fff';
+  } else {
+    bg = 'rgba(200,60,60,0.8)';
+    color = '#fff';
+  }
+ 
+  const tooltip = hasRating
+    ? `Середня оцінка: ${Number(rating).toFixed(1)} · На основі ${reviewCount} відгуків`
+    : 'Ще немає оцінок';
+ 
+  return (
+    <div
+      title={tooltip}
+      style={{
+        position: 'absolute',
+        top: '8px',
+        right: '8px',
+        minWidth: '36px',
+        height: '36px',
+        borderRadius: '50%',
+        background: bg,
+        border: `1.5px solid ${color}44`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.7rem',
+        fontWeight: 700,
+        color,
+        backdropFilter: 'blur(6px)',
+        zIndex: 2,
+        cursor: 'default',
+        userSelect: 'none',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+      }}
+    >
+      {hasRating ? Number(rating).toFixed(1) : '—'}
+    </div>
+  );
+};
+
 const TagList = ({ tags, dark }) => {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? tags : tags.slice(0, 2);
@@ -761,18 +812,21 @@ const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggl
             ? <img src={cover.image} alt={build.title} />
             : <div className={`bcard__cover-empty ${theme}`}>📦</div>
           }
+
+          <RatingBadge rating={build.rating} reviewCount={build.review_count} />
+
           <span className="bcard__badge"
             style={{ background: `${typeColor}22`, color: typeColor, border: `1px solid ${typeColor}44` }}>
             {typeLabel}
           </span>
-          <button className="bcard__fav" onClick={e => { e.stopPropagation(); onFavoriteToggle(build.id); }}>
-            <Star size={13} fill={build.is_favorite ? '#f7d060' : 'none'} color={build.is_favorite ? '#f7d060' : 'rgba(255,255,255,0.8)'} />
-          </button>
         </div>
 
         <div className="bcard__body">
           <h3 className="bcard__title" style={{ color: textColor }}>{build.title}</h3>
           <StarRating value={build.rating} />
+          <button className="bcard__fav" onClick={e => { e.stopPropagation(); onFavoriteToggle(build.id); }}>
+            <Star size={13} fill={build.is_favorite ? '#f7d060' : 'none'} color={build.is_favorite ? '#f7d060' : 'rgba(255,255,255,0.8)'} />
+          </button>
           {build.description && (
             <div>
               <p className="bcard__desc" style={{ color: subColor }}>
@@ -989,6 +1043,152 @@ const SubmissionForm = ({ dark, onSuccess, addToast }) => {
   );
 };
 
+const SORT_OPTIONS = [
+  { value: 'rating_desc', label: 'За оцінкою: від високої до низької' },
+  { value: 'rating_asc', label: 'За оцінкою: від низької до високої' },
+  { value: 'reviews_desc', label: 'За кількістю відгуків: від більшої до меншої' },
+  { value: 'reviews_asc', label: 'За кількістю відгуків: від меншої до більшої' },
+];
+const MIN_REVIEWS_OPTIONS = [
+  { value: '', label: 'Будь-яка кількість' },
+  { value: '5', label: '5+' },
+  { value: '10', label: '10+' },
+  { value: '25', label: '25+' },
+  { value: '50', label: '50+' },
+];
+ 
+const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnalyzeRequest, onSelect, selectedBuild }) => {
+  const [builds, setBuilds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [sort, setSort] = useState('rating_desc');
+  const [minReviews, setMinReviews] = useState('');
+  const [ratingMin, setRatingMin] = useState(1.0);
+  const [ratingMax, setRatingMax] = useState(5.0);
+ 
+  const theme = dark ? 'dark' : 'light';
+  const textColor = dark ? '#edeffd' : '#363949';
+  const subColor = dark ? '#a3bdcc' : '#677483';
+  const cardBg = dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)';
+  const border = dark ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(132,139,200,0.15)';
+  const inputBg = dark ? 'rgba(255,255,255,0.06)' : 'rgba(108,155,207,0.07)';
+  const inputBorder = dark ? 'rgba(255,255,255,0.1)' : 'rgba(108,155,207,0.22)';
+ 
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ sort });
+      if (typeFilter !== 'all') params.set('type', typeFilter);
+      if (minReviews) params.set('min_reviews', minReviews);
+      if (ratingMin > 1.0) params.set('rating_min', ratingMin);
+      if (ratingMax < 5.0) params.set('rating_max', ratingMax);
+      const res = await axios.get(`${API}/builds/?${params}`, {
+        headers: getToken() ? auth() : {},
+      });
+      setBuilds(res.data);
+    } catch {}
+    finally { setLoading(false); }
+  }, [sort, typeFilter, minReviews, ratingMin, ratingMax]);
+ 
+  useEffect(() => { fetch(); }, [fetch]);
+ 
+  const handleFavorite = async (buildId) => {
+    try {
+      const res = await axios.post(`${API}/builds/${buildId}/favorite/`, {}, { headers: auth() });
+      setBuilds(prev => prev.map(b => b.id === buildId ? { ...b, is_favorite: res.data.is_favorite } : b));
+    } catch {}
+  };
+ 
+  const handleAnalyze = async (build) => {
+    if (!specsExist) { onAnalyzeRequest({ type: 'no_specs' }); return; }
+    try {
+      const res = await axios.post(`${API}/builds/${build.id}/analyze_async/`, {}, { headers: auth() });
+      onAnalyzeRequest({ type: 'queued', taskId: res.data.task_id, buildTitle: build.title });
+    } catch (err) {
+      onAnalyzeRequest({ type: 'error', message: err.response?.data?.error || 'Помилка' });
+    }
+  };
+ 
+  const selectStyle = {
+    padding: '0.45rem 0.75rem', borderRadius: '0.6rem', fontSize: '0.78rem',
+    fontFamily: 'Poppins, sans-serif', background: inputBg, color: textColor,
+    border: `1px solid ${inputBorder}`, outline: 'none', cursor: 'pointer',
+  };
+  const pillStyle = (active) => ({
+    padding: '0.35rem 0.85rem', borderRadius: '0.6rem', fontSize: '0.78rem',
+    fontFamily: 'Poppins, sans-serif', border: 'none', cursor: 'pointer',
+    background: active ? 'rgba(108,155,207,0.18)' : (dark ? 'rgba(255,255,255,0.06)' : 'rgba(108,155,207,0.07)'),
+    color: active ? '#6c9bcf' : subColor, fontWeight: active ? 600 : 400,
+  });
+ 
+  return (
+    <div>
+      <div style={{
+        background: cardBg, border, borderRadius: '1rem',
+        padding: '1rem 1.1rem', marginBottom: '1rem',
+        display: 'flex', flexDirection: 'column', gap: '0.75rem',
+      }}>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: subColor, fontWeight: 500 }}>Тип:</span>
+          {[['all','Всі'], ['build','Збірки'], ['script','Скрипти']].map(([v, l]) => (
+            <button key={v} style={pillStyle(typeFilter === v)} onClick={() => setTypeFilter(v)}>{l}</button>
+          ))}
+        </div>
+ 
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: subColor, fontWeight: 500 }}>Сортування:</span>
+          <select style={selectStyle} value={sort} onChange={e => setSort(e.target.value)}>
+            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+ 
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: subColor, fontWeight: 500 }}>Мін. відгуків:</span>
+          {MIN_REVIEWS_OPTIONS.map(o => (
+            <button key={o.value} style={pillStyle(minReviews === o.value)} onClick={() => setMinReviews(o.value)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+ 
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: subColor, fontWeight: 500 }}>Оцінка від:</span>
+          <input type="range" min={1.0} max={5.0} step={0.5} value={ratingMin}
+            onChange={e => setRatingMin(parseFloat(e.target.value))}
+            style={{ width: '100px', accentColor: '#6c9bcf' }} />
+          <span style={{ fontSize: '0.78rem', color: '#6c9bcf', fontWeight: 600 }}>{ratingMin.toFixed(1)}</span>
+          <span style={{ fontSize: '0.72rem', color: subColor, fontWeight: 500 }}>до:</span>
+          <input type="range" min={1.0} max={5.0} step={0.5} value={ratingMax}
+            onChange={e => setRatingMax(parseFloat(e.target.value))}
+            style={{ width: '100px', accentColor: '#6c9bcf' }} />
+          <span style={{ fontSize: '0.78rem', color: '#6c9bcf', fontWeight: 600 }}>{ratingMax.toFixed(1)}</span>
+        </div>
+      </div>
+ 
+      {loading ? (
+        <div className="bc-loader"><Loader size={24} className="spin" color="#6c9bcf" /></div>
+      ) : builds.length === 0 ? (
+        <p style={{ color: subColor, textAlign: 'center', padding: '2rem', fontSize: '0.85rem' }}>
+          Нічого не знайдено за вибраними фільтрами
+        </p>
+      ) : (
+        <div className="bc-grid">
+          {builds.map(b => (
+            <BuildCard key={b.id} build={b} dark={dark}
+              selected={selectedBuild?.id === b.id}
+              onSelect={onSelect}
+              onInstall={onInstall}
+              onFavoriteToggle={handleFavorite}
+              onAnalyze={handleAnalyze}
+              analyzing={analyzingId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1090,6 +1290,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
     { id: 'all', label: 'Всі' },
     { id: 'build', label: 'Збірки' },
     { id: 'script', label: 'Скрипти' },
+    { id: 'rating', label: 'За рейтингом' },
     { id: 'favorites', label: '★ Обрані' },
   ];
 
@@ -1167,7 +1368,18 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
           </div>
         )}
 
-        {loading || aiSearching ? (
+        {activeType === 'rating' ? (
+          <RatingTab
+            dark={dark}
+            onInstall={setInstallBuild}
+            onAnalyze={handleAnalyze}
+            analyzingId={analyzingId}
+            specsExist={specsExist}
+            onAnalyzeRequest={onAnalyzeRequest}
+            onSelect={handleSelect}
+            selectedBuild={selectedBuild}
+          />
+        ) : loading || aiSearching ? (
           <div className="bc-loading" style={{ color: subColor }}>
             <Loader size={22} color="#6c9bcf" className="spin" />
             <span style={{ fontSize: '0.85rem' }}>{aiSearching ? 'ШІ аналізує запит...' : 'Завантаження...'}</span>
