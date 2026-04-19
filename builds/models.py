@@ -19,6 +19,8 @@ class Profile(models.Model):
     role = models.CharField(max_length=10, choices=ROLES, default="user")
     ai_credits = models.IntegerField(default=5, verbose_name="Баланс AI-аналізів")
     is_premium = models.BooleanField(default=False)
+    banner = models.ImageField(upload_to="banners/", null=True, blank=True, verbose_name="Банер профілю")
+    last_seen = models.DateTimeField(null=True, blank=True, verbose_name="Остання активність")
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
@@ -469,3 +471,20 @@ class AppealMessage(models.Model):
 
     def __str__(self):
         return f"AppealMsg({self.author.username})"
+
+    
+class ProfileMessage(models.Model):
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="sent_profile_messages"
+    )
+    target_user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="profile_messages"
+    )
+    text = models.TextField(verbose_name="Повідомлення")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-created_at"]
+ 
+    def __str__(self):
+        return f"{self.author.username} → {self.target_user.username}: {self.text[:40]}"

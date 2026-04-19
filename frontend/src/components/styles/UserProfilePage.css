@@ -1,0 +1,253 @@
+@keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+
+.upp-root {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 3rem;
+  font-family: 'Poppins', sans-serif;
+  animation: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.upp-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  font-family: 'Poppins', sans-serif;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.upp-back {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-bottom: 1.2rem;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+.upp-back:hover { opacity: 0.7; }
+
+.upp-banner {
+  position: relative;
+  height: 160px;
+  border-radius: 1.1rem;
+  overflow: hidden;
+  margin-bottom: 1.2rem;
+}
+.upp-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.upp-banner-empty {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a1d24, #1e2a35);
+}
+.upp-banner-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%);
+}
+.upp-banner-content {
+  position: absolute;
+  bottom: 1rem;
+  left: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.upp-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, #6c9bcf, #1B9c85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  border: 2px solid rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+.upp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.upp-username {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.upp-role {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.upp-identity { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.upp-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.upp-stat {
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.upp-stat-label { font-size: 0.68rem; }
+.upp-stat-val { font-size: 0.88rem; font-weight: 700; }
+
+.upp-bio {
+  border-radius: 0.85rem;
+  padding: 0.85rem 1rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+}
+
+.upp-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(108,155,207,0.15);
+  padding-bottom: 0.5rem;
+}
+.upp-tab {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: background 0.15s;
+}
+.upp-tab.active { background: rgba(108,155,207,0.12); font-weight: 700; }
+.upp-tab.dark:hover { background: rgba(255,255,255,0.06); }
+.upp-tab.light:hover { background: rgba(108,155,207,0.08); }
+
+.upp-empty {
+  text-align: center;
+  font-size: 0.82rem;
+  padding: 2rem;
+}
+
+.upp-messages { display: flex; flex-direction: column; gap: 0.65rem; }
+
+.upp-msg-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  border-radius: 0.85rem;
+  padding: 0.7rem;
+  margin-bottom: 0.2rem;
+}
+.upp-msg-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.upp-msg-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 0.6rem;
+  background: #6c9bcf;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.upp-msg-send:disabled { opacity: 0.4; cursor: default; }
+.spin { animation: spin 1s linear infinite; }
+
+.upp-msg {
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.9rem;
+}
+.upp-msg-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.upp-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, #6c9bcf, #1B9c85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.upp-msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.upp-msg-author { font-size: 0.78rem; font-weight: 600; }
+.upp-msg-time { font-size: 0.65rem; margin-left: 0.4rem; }
+.upp-msg-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #e05252;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px 4px;
+}
+.upp-msg:hover .upp-msg-delete { opacity: 1; }
+.upp-msg-text { font-size: 0.8rem; line-height: 1.5; margin: 0; white-space: pre-wrap; }
+
+.upp-builds { display: flex; flex-direction: column; gap: 0.6rem; }
+.upp-build {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.9rem;
+}
+.upp-build-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: 0.55rem;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(108,155,207,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.upp-build-cover img { width: 100%; height: 100%; object-fit: cover; }
+.upp-build-info { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.upp-build-title { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upp-build-meta { font-size: 0.7rem; }

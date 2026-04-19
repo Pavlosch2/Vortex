@@ -24,6 +24,7 @@ from .models import (
     UserBlock,
     AppealChat,
     AppealMessage,
+    ProfileMessage,
 )
 
 
@@ -65,7 +66,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     avatar = serializers.SerializerMethodField()
-
+    banner = serializers.SerializerMethodField()
+ 
     def get_avatar(self, obj):
         if not obj.avatar:
             return None
@@ -73,10 +75,83 @@ class ProfileSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.avatar.url)
         return obj.avatar.url
-
+ 
+    def get_banner(self, obj):
+        if not obj.banner:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.banner.url)
+        return obj.banner.url
+ 
     class Meta:
         model = Profile
-        fields = ["username", "role", "ai_credits", "is_premium", "avatar", "bio"]
+        fields = ["username", "role", "ai_credits", "is_premium", "avatar", "banner", "bio"]
+
+
+class ProfileMessageSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.username", read_only=True)
+    author_avatar = serializers.SerializerMethodField()
+    is_own = serializers.SerializerMethodField()
+ 
+    def get_author_avatar(self, obj):
+        try:
+            request = self.context.get("request")
+            avatar = obj.author.profile.avatar
+            if avatar and request:
+                return request.build_absolute_uri(avatar.url)
+        except Exception:
+            pass
+        return None
+ 
+    def get_is_own(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.author_id == request.user.id or obj.target_user_id == request.user.id
+ 
+    class Meta:
+        model = ProfileMessage
+        fields = ["id", "author_name", "author_avatar", "text", "created_at", "is_own"]
+ 
+ 
+class PublicProfileSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    date_joined = serializers.DateTimeField(source="user.date_joined", read_only=True)
+    avatar = serializers.SerializerMethodField()
+    banner = serializers.SerializerMethodField()
+    build_count = serializers.SerializerMethodField()
+    post_count = serializers.SerializerMethodField()
+ 
+    def get_avatar(self, obj):
+        if not obj.avatar:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.avatar.url)
+        return obj.avatar.url
+ 
+    def get_banner(self, obj):
+        if not obj.banner:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.banner.url)
+        return obj.banner.url
+ 
+    def get_build_count(self, obj):
+        return Build.objects.filter(author=obj.user, is_public=True).count()
+ 
+    def get_post_count(self, obj):
+        from .models import BuildPost
+        return BuildPost.objects.filter(author=obj.user).count()
+ 
+    class Meta:
+        model = Profile
+        fields = [
+            "username", "role", "avatar", "banner", "bio",
+            "last_seen", "date_joined", "build_count", "post_count",
+        ]
 
 
 class PCSpecsSerializer(serializers.ModelSerializer):
@@ -106,6 +181,7 @@ class BuildSerializer(serializers.ModelSerializer):
     review_count = serializers.SerializerMethodField()
     post_count = serializers.SerializerMethodField()
     user_review = serializers.SerializerMethodField()
+    author_name = serializers.CharField(source="author.username", read_only=True, allow_null=True)
 
     class Meta:
         model = Build
@@ -132,6 +208,7 @@ class BuildSerializer(serializers.ModelSerializer):
             "post_count",
             "user_review",
             "download_count",
+            "author_name",
         ]
 
     def get_images(self, obj):

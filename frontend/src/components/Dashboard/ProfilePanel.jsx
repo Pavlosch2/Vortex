@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Cpu, Activity, Database, Monitor, Loader, Camera } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, Cpu, Activity, Database, Monitor,
+  Loader, Camera, Pencil, Check, X, Package,
+} from 'lucide-react';
 import axios from 'axios';
 import './styles/ProfilePanel.css';
 
@@ -98,6 +101,39 @@ const AvatarUploader = ({ avatarUrl, username, onUpdate }) => {
   );
 };
 
+const BannerUploader = ({ bannerUrl, onUpdate }) => {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('banner', file);
+    try {
+      const res = await axios.patch(`${API}/profile/`, fd, {
+        headers: { ...authH(), 'Content-Type': 'multipart/form-data' },
+      });
+      onUpdate(res.data.banner);
+    } catch {}
+    setUploading(false);
+  };
+
+  return (
+    <div className="pp-banner-wrap" onClick={() => fileRef.current?.click()} title="Змінити банер">
+      {bannerUrl
+        ? <img src={bannerUrl} alt="banner" className="pp-banner-img" />
+        : <div className="pp-banner-empty" />
+      }
+      <div className="pp-banner-edit-btn">
+        {uploading ? <Loader size={12} className="spin" color="#fff" /> : <Camera size={12} color="#fff" />}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+        onChange={e => uploadFile(e.target.files[0])} />
+    </div>
+  );
+};
+
 const SpecCard = ({ icon, label, value, bg, color, subColor }) => (
   <div className="pp-spec-card" style={{ background: bg }}>
     <div className="pp-spec-icon">{icon}</div>
@@ -108,15 +144,27 @@ const SpecCard = ({ icon, label, value, bg, color, subColor }) => (
   </div>
 );
 
-const ProfilePanel = ({ dark, collapsed, setCollapsed }) => {
+const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subTextColor = dark ? '#a3bdcc' : '#677483';
   const cardBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(132,139,200,0.1)';
+  const inputBg = dark ? 'rgba(255,255,255,0.06)' : 'rgba(108,155,207,0.07)';
+  const inputBorder = dark ? 'rgba(255,255,255,0.1)' : 'rgba(108,155,207,0.22)';
 
   const [specs, setSpecs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [buildCount, setBuildCount] = useState(0);
+
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
+
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioText, setBioText] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
 
   useEffect(() => {
     if (collapsed) return;
@@ -128,9 +176,42 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed }) => {
       axios.get(`${API}/profile/`, { headers: authH() }).catch(() => null),
     ]).then(([specsRes, profileRes]) => {
       if (specsRes.data.length > 0) setSpecs(specsRes.data[0]);
-      if (profileRes?.data) setProfile(profileRes.data);
+      if (profileRes?.data) {
+        setProfile(profileRes.data);
+        setBioText(profileRes.data.bio || '');
+      }
     }).finally(() => setLoading(false));
   }, [collapsed]);
+  useEffect(() => {
+    if (!profile?.username) return;
+    axios.get(`${API}/users/${profile.username}/`, { headers: authH() })
+      .then(r => setBuildCount(r.data.build_count ?? 0))
+      .catch(() => {});
+  }, [profile?.username]);
+
+  const saveUsername = async () => {
+    if (!newUsername.trim()) return;
+    setSavingUsername(true);
+    setUsernameError('');
+    try {
+      const res = await axios.patch(`${API}/profile/`, { username: newUsername.trim() }, { headers: authH() });
+      setProfile(p => ({ ...p, username: res.data.username }));
+      setEditingUsername(false);
+    } catch (err) {
+      setUsernameError(err.response?.data?.error || 'Помилка');
+    }
+    setSavingUsername(false);
+  };
+
+  const saveBio = async () => {
+    setSavingBio(true);
+    try {
+      await axios.patch(`${API}/profile/`, { bio: bioText }, { headers: authH() });
+      setProfile(p => ({ ...p, bio: bioText }));
+      setEditingBio(false);
+    } catch {}
+    setSavingBio(false);
+  };
 
   return (
     <div className={`pp-root ${theme} ${collapsed ? 'collapsed' : 'expanded'}`}>
@@ -141,6 +222,11 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed }) => {
 
       {!collapsed && (
         <div className="pp-body">
+          <BannerUploader
+            bannerUrl={profile?.banner}
+            onUpdate={(url) => setProfile(p => ({ ...p, banner: url }))}
+          />
+
           <div className="pp-header">
             <AvatarUploader
               avatarUrl={profile?.avatar}
@@ -148,15 +234,105 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed }) => {
               dark={dark}
               onUpdate={(newUrl) => setProfile(p => ({ ...p, avatar: newUrl }))}
             />
-            <h3 className="pp-username" style={{ color: textColor }}>
-              {profile?.username || '—'}
-            </h3>
+
+            {editingUsername ? (
+              <div className="pp-username-edit">
+                <input
+                  autoFocus
+                  value={newUsername}
+                  onChange={e => setNewUsername(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveUsername(); if (e.key === 'Escape') setEditingUsername(false); }}
+                  style={{
+                    background: inputBg, border: `1px solid ${inputBorder}`,
+                    color: textColor, borderRadius: '0.5rem', padding: '0.3rem 0.6rem',
+                    fontFamily: 'Poppins, sans-serif', fontSize: '0.85rem', outline: 'none',
+                  }}
+                />
+                {usernameError && <p style={{ color: '#e05252', fontSize: '0.68rem', margin: '2px 0 0' }}>{usernameError}</p>}
+                <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
+                  <button onClick={saveUsername} disabled={savingUsername} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1B9c85' }}>
+                    {savingUsername ? <Loader size={14} className="spin" /> : <Check size={14} />}
+                  </button>
+                  <button onClick={() => setEditingUsername(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e05252' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
+                <h3
+                  className="pp-username"
+                  style={{ color: textColor, cursor: 'pointer' }}
+                  onClick={() => profile?.username && onOpenProfile && onOpenProfile(profile.username)}
+                  title="Переглянути профіль"
+                >
+                  {profile?.username || '—'}
+                </h3>
+                <button onClick={() => { setNewUsername(profile?.username || ''); setEditingUsername(true); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: subTextColor, padding: '2px' }}>
+                  <Pencil size={12} />
+                </button>
+              </div>
+            )}
+
             <p className="pp-role" style={{ color: subTextColor }}>
               {ROLE_LABELS[profile?.role] || profile?.role || '—'}
             </p>
+
+            {buildCount > 0 && (
+              <div className="pp-build-count" style={{ color: subTextColor }}>
+                <Package size={12} /> {buildCount} {buildCount === 1 ? 'збірка' : 'збірок'} на сайті
+              </div>
+            )}
+
             {profile?.ai_credits !== undefined && (
               <div className={`pp-credits ${profile.ai_credits > 0 ? 'positive' : 'empty'}`}>
                 ⚡ {profile.ai_credits} AI {profile.ai_credits === 1 ? 'кредит' : 'кредити'}
+              </div>
+            )}
+
+          </div>
+
+          <div className="pp-bio-section">
+            {editingBio ? (
+              <div>
+                <textarea
+                  value={bioText}
+                  onChange={e => setBioText(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  style={{
+                    width: '100%', background: inputBg, border: `1px solid ${inputBorder}`,
+                    color: textColor, borderRadius: '0.65rem', padding: '0.55rem 0.75rem',
+                    fontFamily: 'Poppins, sans-serif', fontSize: '0.78rem', resize: 'vertical',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+                  <button onClick={saveBio} disabled={savingBio} style={{
+                    flex: 1, padding: '0.4rem', borderRadius: '0.5rem', border: 'none',
+                    background: '#6c9bcf', color: '#fff', fontFamily: 'Poppins, sans-serif',
+                    fontSize: '0.75rem', cursor: 'pointer',
+                  }}>
+                    {savingBio ? <Loader size={12} className="spin" /> : 'Зберегти'}
+                  </button>
+                  <button onClick={() => { setEditingBio(false); setBioText(profile?.bio || ''); }} style={{
+                    padding: '0.4rem 0.7rem', borderRadius: '0.5rem', background: 'none',
+                    border: `1px solid ${inputBorder}`, color: subTextColor,
+                    fontFamily: 'Poppins, sans-serif', fontSize: '0.75rem', cursor: 'pointer',
+                  }}>
+                    Скасувати
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="pp-bio-view" onClick={() => setEditingBio(true)} title="Клікніть щоб редагувати">
+                {profile?.bio
+                  ? <p style={{ color: subTextColor, fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>{profile.bio}</p>
+                  : <p style={{ color: subTextColor, fontSize: '0.73rem', margin: 0, opacity: 0.6 }}>
+                      + Додати опис профілю
+                    </p>
+                }
               </div>
             )}
           </div>

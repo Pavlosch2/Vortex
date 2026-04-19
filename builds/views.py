@@ -27,6 +27,7 @@ from .models import (
     UserBlock,
     AppealChat,
     AppealMessage,
+    ProfileMessage,
 )
 from .serializers import (
     AIAnalysisLogSerializer,
@@ -48,6 +49,9 @@ from .serializers import (
     UserBlockSerializer, 
     AppealMessageSerializer, 
     AppealChatSerializer,
+    PublicProfileSerializer,
+    BuildSerializer,
+    ProfileMessageSerializer,
 )
 
 from .notify import (
@@ -735,23 +739,97 @@ class PCSpecsViewSet(viewsets.ModelViewSet):
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
-
+ 
     def get(self, request):
         return Response(
             ProfileSerializer(request.user.profile, context={"request": request}).data
         )
-
+ 
     def patch(self, request):
         profile = request.user.profile
         avatar = request.FILES.get("avatar")
+        banner = request.FILES.get("banner")
         if avatar:
             profile.avatar = avatar
+        if banner:
+            profile.banner = banner
         bio = request.data.get("bio")
         if bio is not None:
             profile.bio = bio
+        new_username = request.data.get("username", "").strip()
+        if new_username and new_username != request.user.username:
+            if User.objects.filter(username=new_username).exclude(pk=request.user.pk).exists():
+                return Response({"error": "Цей нікнейм вже зайнятий"}, status=400)
+            request.user.username = new_username
+            request.user.save(update_fields=["username"])
         profile.save()
         return Response(ProfileSerializer(profile, context={"request": request}).data)
-
+    
+class PublicProfileView(APIView):
+    permission_classes = []
+ 
+    def get(self, request, username):
+        user = get_object_or_404(User, username=username)
+        return Response(
+            PublicProfileSerializer(user.profile, context={"request": request}).data
+        )
+ 
+ 
+class PublicProfileBuildsView(APIView):
+    permission_classes = []
+ 
+    def get(self, request, username):
+        user = get_object_or_404(User, username=username)
+        builds = Build.objects.filter(author=user, is_public=True).prefetch_related(
+            "images", "reviews"
+        ).order_by("-created_at")
+        return Response(
+            BuildSerializer(builds, many=True, context={"request": request}).data
+        )
+ 
+ 
+class ProfileMessageView(APIView):
+    permission_classes = []
+ 
+    def get(self, request, username):
+        user = get_object_or_404(User, username=username)
+        messages = ProfileMessage.objects.filter(target_user=user).select_related(
+            "author", "author__profile"
+        )
+        return Response(
+            ProfileMessageSerializer(messages, many=True, context={"request": request}).data
+        )
+ 
+    def post(self, request, username):
+        if not request.user.is_authenticated:
+            return Response({"error": "Потрібна авторизація"}, status=401)
+        user = get_object_or_404(User, username=username)
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response({"error": "Повідомлення не може бути порожнім"}, status=400)
+        msg = ProfileMessage.objects.create(
+            author=request.user,
+            target_user=user,
+            text=text,
+        )
+        return Response(
+            ProfileMessageSerializer(msg, context={"request": request}).data,
+            status=201,
+        )
+ 
+ 
+class ProfileMessageDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+ 
+    def delete(self, request, username, msg_id):
+        user = get_object_or_404(User, username=username)
+        msg = get_object_or_404(ProfileMessage, pk=msg_id, target_user=user)
+        is_owner = msg.author == request.user or user == request.user
+        is_staff_user = is_staff(request.user)
+        if not is_owner and not is_staff_user:
+            return Response({"error": "Недостатньо прав"}, status=403)
+        msg.delete()
+        return Response(status=204)
 
 class BuildSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = BuildSubmissionSerializer
@@ -1640,4 +1718,26 @@ class PCSpecsAutoView(APIView):
         else:
             spec = PCSpecs.objects.create(user=request.user, **payload)
             return Response(PCSpecsSerializer(spec).data, status=201)
+
+
+class CustomLoginView(APIView):
+    permission_classes = (AllowAny,)
  
+    def post(self, request):
+        from django.utils import timezone
+        from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+ 
+        serializer = TokenObtainPairSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:
+            return Response({"detail": "Невірний логін або пароль"}, status=401)
+ 
+        user = serializer.user
+        try:
+            user.profile.last_seen = timezone.now()
+            user.profile.save(update_fields=["last_seen"])
+        except Exception:
+            pass
+ 
+        return Response(serializer.validated_data)

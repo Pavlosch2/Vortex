@@ -11,9 +11,11 @@ import AIAnalyzer from './AIAnalyzer';
 import PCSpecsForm from './PCSpecsForm';
 import ToastContainer from './ToastContainer';
 import NotificationPanel from './NotificationPanel';
+import UserHeaderBadge from './UserHeaderBadge';
 import { useToast } from '../hooks/useToast';
 import { useNotifications } from '../hooks/useNotifications';
 import './styles/Dashboard.css';
+import UserProfilePage from './UserProfilePage'
 
 const API = 'http://127.0.0.1:8000/api';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
@@ -31,11 +33,13 @@ export default function Dashboard({ onLogout, dark, setDark }) {
   const { toasts, addToast, updateToast, removeToast, collapseToast, restoreToast, getProgress } = useToast();
   const { notifications, unreadCount, markRead, markAllRead, deleteOne, deleteAll } = useNotifications();
 
+  const [profileUsername, setProfileUsername] = useState(null);
+  const [headerProfile, setHeaderProfile] = useState(null);
   const [profileCollapsed, setProfileCollapsed] = useState(false);
-
+  
   useEffect(() => {
     axios.get(`${API}/profile/`, { headers: auth() })
-      .then(r => setUserRole(r.data.role))
+      .then(r => { setUserRole(r.data.role); setHeaderProfile(r.data); })
       .catch(() => {});
     axios.get(`${API}/specs/`, { headers: auth() })
       .then(r => setSpecsExist(r.data.length > 0))
@@ -124,6 +128,15 @@ export default function Dashboard({ onLogout, dark, setDark }) {
   };
 
   const renderContent = () => {
+    if (profileUsername) {
+      return (
+        <UserProfilePage
+          username={profileUsername}
+          dark={dark}
+          onBack={() => setProfileUsername(null)}
+        />
+      );
+     }
     switch (activeNav) {
       case 'catalog':
         return (
@@ -132,6 +145,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
             onAnalyzeRequest={handleAnalyzeRequest}
             specsExist={specsExist}
             navExtra={navExtra}
+            onOpenProfile={setProfileUsername}
           />
         );
       case 'ai':
@@ -191,6 +205,11 @@ export default function Dashboard({ onLogout, dark, setDark }) {
             </span>
           </div>
           <div className="header-right">
+            <UserHeaderBadge
+              dark={dark}
+              profile={headerProfile}
+              onOpenProfile={() => setProfileUsername(headerProfile?.username)}
+            />
             <NotificationPanel
               dark={dark}
               notifications={notifications}
@@ -218,7 +237,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
         </main>
       </div>
 
-      <ProfilePanel dark={dark} collapsed={profileCollapsed} setCollapsed={setProfileCollapsed} />
+      <ProfilePanel dark={dark} collapsed={profileCollapsed} setCollapsed={setProfileCollapsed} onOpenProfile={setProfileUsername} />
 
       <ToastContainer
         toasts={toasts}

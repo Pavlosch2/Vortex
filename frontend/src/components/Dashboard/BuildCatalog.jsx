@@ -8,6 +8,7 @@ import {
   Edit3
 } from 'lucide-react';
 import './styles/BuildCatalog.css';
+import { UserLink } from '../UserHoverCard';
 import { ImageDropZone } from './ProfilePanel';
 
 const API = 'http://127.0.0.1:8000/api';
@@ -791,7 +792,7 @@ const SimilarModal = ({ build, dark, onClose, onInstall, onAnalyze, analyzing })
   );
 };
 
-const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggle, onAnalyze, analyzing }) => {
+const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggle, onAnalyze, analyzing, onOpenProfile }) => {
   const [descExpanded, setDescExpanded] = useState(false);
   const [showSimilar, setShowSimilar] = useState(false);
   const LIMIT = 110;
@@ -823,6 +824,11 @@ const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggl
 
         <div className="bcard__body">
           <h3 className="bcard__title" style={{ color: textColor }}>{build.title}</h3>
+          {build.author_name && (
+            <span style={{ fontSize: '0.7rem', color: subColor }}>
+              <UserLink username={build.author_name} dark={dark} onOpenProfile={onOpenProfile} />
+            </span>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <StarRating value={build.rating} />
               <span style={{
@@ -1200,7 +1206,7 @@ const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnal
   );
 };
 
-const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
+const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProfile }) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1420,6 +1426,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast }) => {
                 onFavoriteToggle={handleFavorite}
                 onAnalyze={handleAnalyze}
                 analyzing={analyzingId}
+                onOpenProfile={onOpenProfile}
               />
             ))}
           </div>

@@ -12,6 +12,7 @@ from builds.views import (
     PasswordResetRequestView,
     RegisterView,
     EmailConfirmView,
+    CustomLoginView
 )
 
 
@@ -51,7 +52,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("builds.urls")),
     path("api/auth/register/", RegisterView.as_view(), name="auth_register"),
-    path("api/auth/login/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/login/", CustomLoginView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path(
         "api/auth/password-reset/",

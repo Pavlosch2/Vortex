@@ -1,0 +1,125 @@
+.ulink-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.ulink {
+  font-size: inherit;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.ulink:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.uhover-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 240px;
+  border-radius: 1rem;
+  padding: 1rem;
+  z-index: 3000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+  animation: uhoverFadeIn 0.15s ease;
+  font-family: 'Poppins', sans-serif;
+}
+
+@keyframes uhoverFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.uhover-loading {
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.uhover-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.uhover-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 0.65rem;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #6c9bcf, #1B9c85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.uhover-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.uhover-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.uhover-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uhover-role {
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.uhover-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.uhover-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.uhover-stat-label {
+  font-size: 0.7rem;
+}
+
+.uhover-stat-val {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.uhover-profile-btn {
+  width: 100%;
+  padding: 0.45rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(108, 155, 207, 0.3);
+  background: rgba(108, 155, 207, 0.1);
+  color: #6c9bcf;
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.73rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.uhover-profile-btn:hover {
+  background: rgba(108, 155, 207, 0.2);
+}

@@ -29,6 +29,10 @@ from .views import (
     AppealResolveView,
     PCSpecsAutoView,
     EmailConfirmView,
+    PublicProfileView,
+    PublicProfileBuildsView,
+    ProfileMessageView,
+    ProfileMessageDeleteView,
 )
 
 router = DefaultRouter()
@@ -65,4 +69,8 @@ urlpatterns = [
     path("appeal/staff/", AppealStaffView.as_view(), name="appeal-staff"),
     path("appeal/<int:chat_id>/message/", AppealStaffView.as_view(), name="appeal-staff-message"),
     path("appeal/<int:chat_id>/resolve/", AppealResolveView.as_view(), name="appeal-resolve"),
+    path("users/<str:username>/", PublicProfileView.as_view(), name="public-profile"),
+    path("users/<str:username>/builds/", PublicProfileBuildsView.as_view(), name="public-profile-builds"),
+    path("users/<str:username>/messages/", ProfileMessageView.as_view(), name="profile-messages"),
+    path("users/<str:username>/messages/<int:msg_id>/", ProfileMessageDeleteView.as_view(), name="profile-message-delete"),
 ]
