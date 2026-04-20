@@ -77,7 +77,7 @@ export default function NotificationPanel({ dark, notifications, unreadCount, ma
         onClick={() => { setOpen(v => !v); setConfirmClear(false); }}
         aria-label="Сповіщення"
       >
-        <Bell size={19} />
+        <Bell size={15} />
         {unreadCount > 0 && (
           <span className="notif-badge">{badgeLabel}</span>
         )}

@@ -209,6 +209,7 @@ class BuildSerializer(serializers.ModelSerializer):
             "user_review",
             "download_count",
             "author_name",
+            "is_premium_only",
         ]
 
     def get_images(self, obj):
@@ -253,6 +254,7 @@ class BuildSerializer(serializers.ModelSerializer):
 
 class BuildReviewSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    is_author_premium = serializers.BooleanField(source="user.profile.is_premium", read_only=True, default=False)
 
     class Meta:
         model = BuildReview
@@ -268,6 +270,7 @@ class BuildReviewSerializer(serializers.ModelSerializer):
 class BuildPostReplySerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="author.username", read_only=True)
     is_own = serializers.SerializerMethodField()
+    is_author_premium = serializers.BooleanField(source="author.profile.is_premium", read_only=True, default=False)
 
     def get_replies(self, obj):
         request = self.context.get("request")
@@ -292,6 +295,7 @@ class BuildPostSerializer(serializers.ModelSerializer):
     is_pinned = serializers.BooleanField(read_only=True)
     is_own = serializers.SerializerMethodField()
     replies = BuildPostReplySerializer(many=True, read_only=True)
+    is_author_premium = serializers.BooleanField(source="author.profile.is_premium", read_only=True, default=False)
 
     def get_replies(self, obj):
         request = self.context.get("request")

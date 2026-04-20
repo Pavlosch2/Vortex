@@ -12,10 +12,12 @@ import PCSpecsForm from './PCSpecsForm';
 import ToastContainer from './ToastContainer';
 import NotificationPanel from './NotificationPanel';
 import UserHeaderBadge from './UserHeaderBadge';
+import UserProfilePage from './UserProfilePage';
+import UpsellModal from './UpsellModal';
+import PricingPage from './PricingPage';
 import { useToast } from '../hooks/useToast';
 import { useNotifications } from '../hooks/useNotifications';
 import './styles/Dashboard.css';
-import UserProfilePage from './UserProfilePage'
 
 const API = 'http://127.0.0.1:8000/api';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
@@ -29,14 +31,15 @@ export default function Dashboard({ onLogout, dark, setDark }) {
   const [userRole, setUserRole] = useState('user');
   const [specsExist, setSpecsExist] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [upsellReason, setUpsellReason] = useState(null);
+  const [showPricing, setShowPricing] = useState(false);
+  const [profileUsername, setProfileUsername] = useState(null);
+  const [headerProfile, setHeaderProfile] = useState(null);
+  const [profileCollapsed, setProfileCollapsed] = useState(false);
 
   const { toasts, addToast, updateToast, removeToast, collapseToast, restoreToast, getProgress } = useToast();
   const { notifications, unreadCount, markRead, markAllRead, deleteOne, deleteAll } = useNotifications();
 
-  const [profileUsername, setProfileUsername] = useState(null);
-  const [headerProfile, setHeaderProfile] = useState(null);
-  const [profileCollapsed, setProfileCollapsed] = useState(false);
-  
   useEffect(() => {
     axios.get(`${API}/profile/`, { headers: auth() })
       .then(r => { setUserRole(r.data.role); setHeaderProfile(r.data); })
@@ -58,7 +61,6 @@ export default function Dashboard({ onLogout, dark, setDark }) {
       try {
         const res = await axios.get(`${API}/tasks/${taskId}/`, { headers: auth() });
         const task = res.data;
-
         if (task.status === 'done') {
           clearInterval(interval);
           setAnalysisResult(task.result);
@@ -89,7 +91,6 @@ export default function Dashboard({ onLogout, dark, setDark }) {
         clearInterval(interval);
       }
     }, POLL_MS);
-
     return interval;
   }, [addToast, removeToast]);
 
@@ -125,6 +126,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
     support: 'Підтримка',
     settings: 'Налаштування',
     admin: 'Панель керування',
+    pricing: 'Тарифи',
   };
 
   const renderContent = () => {
@@ -136,7 +138,17 @@ export default function Dashboard({ onLogout, dark, setDark }) {
           onBack={() => setProfileUsername(null)}
         />
       );
-     }
+    }
+
+    if (showPricing || activeNav === 'pricing') {
+      return (
+        <PricingPage
+          dark={dark}
+          onBack={() => { setShowPricing(false); setActiveNav('catalog'); }}
+        />
+      );
+    }
+
     switch (activeNav) {
       case 'catalog':
         return (
@@ -146,6 +158,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
             specsExist={specsExist}
             navExtra={navExtra}
             onOpenProfile={setProfileUsername}
+            onUpsell={setUpsellReason}
           />
         );
       case 'ai':
@@ -201,7 +214,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
               <Menu size={22} />
             </button>
             <span className={`header-nav-label ${dark ? 'dark' : 'light'}`}>
-              {NAV_LABELS[activeNav]}
+              {NAV_LABELS[activeNav] || ''}
             </span>
           </div>
           <div className="header-right">
@@ -220,14 +233,16 @@ export default function Dashboard({ onLogout, dark, setDark }) {
               deleteAll={deleteAll}
               onNavigate={handleNotifNavigate}
             />
-            <div
-              className={`theme-toggle ${dark ? 'dark' : 'light'}`}
-              onClick={() => setDark(v => !v)}
-            >
-              {dark ? <Moon size={15} color="#6c9bcf" /> : <Sun size={15} color="#f7d060" />}
-              <span className={`theme-toggle-label ${dark ? 'dark' : 'light'}`}>
-                {dark ? 'Dark' : 'Light'}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <div
+                className={`theme-toggle ${dark ? 'dark' : 'light'}`}
+                onClick={() => setDark(v => !v)}
+              >
+                {dark ? <Moon size={15} color="#6c9bcf" /> : <Sun size={15} color="#f7d060" />}
+                <span className={`theme-toggle-label ${dark ? 'dark' : 'light'}`}>
+                  {dark ? 'Dark' : 'Light'}
+                </span>
+              </div>
             </div>
           </div>
         </header>
@@ -237,7 +252,12 @@ export default function Dashboard({ onLogout, dark, setDark }) {
         </main>
       </div>
 
-      <ProfilePanel dark={dark} collapsed={profileCollapsed} setCollapsed={setProfileCollapsed} onOpenProfile={setProfileUsername} />
+      <ProfilePanel
+        dark={dark}
+        collapsed={profileCollapsed}
+        setCollapsed={setProfileCollapsed}
+        onOpenProfile={setProfileUsername}
+      />
 
       <ToastContainer
         toasts={toasts}
@@ -246,6 +266,13 @@ export default function Dashboard({ onLogout, dark, setDark }) {
         restoreToast={restoreToast}
         getProgress={getProgress}
         onNavigate={setActiveNav}
+      />
+
+      <UpsellModal
+        reason={upsellReason}
+        dark={dark}
+        onClose={() => setUpsellReason(null)}
+        onNavigatePricing={() => { setUpsellReason(null); setActiveNav('pricing'); }}
       />
     </div>
   );

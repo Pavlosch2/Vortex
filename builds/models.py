@@ -98,6 +98,7 @@ class Build(models.Model):
     archive_url = models.URLField(blank=True, null=True)
     archive_identifier = models.CharField(max_length=255, blank=True, null=True)
     download_count = models.PositiveIntegerField(default=0, verbose_name="Завантажень")
+    is_premium_only = models.BooleanField(default=False, verbose_name="Тільки для преміум")
 
     def save(self, *args, **kwargs):
         is_new = not self.pk
@@ -488,3 +489,24 @@ class ProfileMessage(models.Model):
  
     def __str__(self):
         return f"{self.author.username} → {self.target_user.username}: {self.text[:40]}"
+    
+class FeaturedBuild(models.Model):
+    build = models.OneToOneField(
+        Build, on_delete=models.CASCADE, related_name="featured"
+    )
+    promoted_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="promoted_builds"
+    )
+    expires_at = models.DateTimeField(verbose_name="Дійсно до")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        verbose_name = "Просування збірки"
+        verbose_name_plural = "Просування збірок"
+ 
+    def is_active(self):
+        from django.utils import timezone
+        return timezone.now() < self.expires_at
+ 
+    def __str__(self):
+        return f"Featured: {self.build.title}"

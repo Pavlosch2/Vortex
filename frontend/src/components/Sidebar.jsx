@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, LayoutGrid, HeadphonesIcon, Settings, ShieldCheck, Bot } from 'lucide-react';
+import { LogOut, LayoutGrid, HeadphonesIcon, Settings, ShieldCheck, Bot, Zap } from 'lucide-react';
 import logo from '../assets/vortexLogo.png';
 import './styles/Sidebar.css';
 
@@ -9,6 +9,7 @@ const Sidebar = ({ active, setActive, dark, open, setOpen, userRole, onLogout })
     { id: 'ai', label: 'Vortex AI', icon: Bot },
     { id: 'support', label: 'Підтримка', icon: HeadphonesIcon },
     { id: 'settings', label: 'Налаштування', icon: Settings },
+    { id: 'pricing', label: 'Тарифи', icon: Zap },
     ...(userRole === 'manager' || userRole === 'admin'
       ? [{ id: 'admin', label: 'Панель керування', icon: ShieldCheck }]
       : []),
@@ -29,6 +30,7 @@ const Sidebar = ({ active, setActive, dark, open, setOpen, userRole, onLogout })
         {navItems.map(({ id, label, icon: Icon }) => {
           const isActive = active === id;
           const isAdmin = id === 'admin';
+          const isPricing = id === 'pricing';
           return (
             <button
               key={id}
@@ -39,9 +41,15 @@ const Sidebar = ({ active, setActive, dark, open, setOpen, userRole, onLogout })
                 isAdmin ? 'admin-item' : '',
                 theme,
               ].join(' ')}
+              style={isPricing && !isActive ? { color: '#f7d060' } : {}}
             >
-              <Icon size={19} strokeWidth={isActive ? 2.5 : 2} />
-              <span className={`nav-btn-label ${isActive ? 'active' : 'inactive'}`}>
+              <Icon
+                size={19}
+                strokeWidth={isActive ? 2.5 : 2}
+                color={isPricing ? '#f7d060' : undefined}
+              />
+              <span className={`nav-btn-label ${isActive ? 'active' : 'inactive'}`}
+                style={isPricing ? { color: '#f7d060' } : {}}>
                 {label}
               </span>
             </button>

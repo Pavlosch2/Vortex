@@ -33,6 +33,8 @@ from .views import (
     PublicProfileBuildsView,
     ProfileMessageView,
     ProfileMessageDeleteView,
+    FeaturedBuildsView, 
+    PromoteBuildView,
 )
 
 router = DefaultRouter()

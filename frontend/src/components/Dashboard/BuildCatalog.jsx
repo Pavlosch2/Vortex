@@ -792,7 +792,7 @@ const SimilarModal = ({ build, dark, onClose, onInstall, onAnalyze, analyzing })
   );
 };
 
-const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggle, onAnalyze, analyzing, onOpenProfile }) => {
+const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggle, onAnalyze, analyzing, onOpenProfile, onUpsell}) => {
   const [descExpanded, setDescExpanded] = useState(false);
   const [showSimilar, setShowSimilar] = useState(false);
   const LIMIT = 110;
@@ -861,7 +861,12 @@ const BuildCard = ({ build, dark, selected, onSelect, onInstall, onFavoriteToggl
           <div className="bcard__actions">
             <button
               className={`bcard__install${uploading ? ' bcard__install--uploading' : ''}`}
-              onClick={e => { e.stopPropagation(); if (!uploading) onInstall(build); }}
+              onClick={e => {
+                e.stopPropagation();
+                if (uploading) return;
+                if (build.is_premium_only) { onUpsell && onUpsell('premium'); return; }
+                onInstall(build);
+              }}
               disabled={uploading}>
               {uploading
                 ? <><Loader size={13} className="spin" /> Завантаження...</>
@@ -900,7 +905,7 @@ const STATUS_MAP = {
   rejected: { label: 'Відхилено', bg: 'rgba(255,0,96,0.12)', color: '#ff0060' },
 };
 
-const MySubmissions = ({ dark }) => {
+const MySubmissions = ({dark, onUpsell}) => {
   const [subs, setSubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const theme = dark ? 'dark' : 'light';
@@ -976,7 +981,14 @@ const SubmissionForm = ({ dark, onSuccess, addToast }) => {
       await axios.post(`${API}/submissions/`, fd, { headers: { ...auth(), 'Content-Type': 'multipart/form-data' } });
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Помилка надсилання');
+      const msg = err.response?.data?.non_field_errors?.[0]
+        || err.response?.data?.detail
+        || '';
+      if (msg.includes('активну заявку')) {
+        onUpsell && onUpsell('submission');
+      } else {
+        setError(msg || 'Помилка надсилання');
+      }
     } finally {
       setSending(false);
     }
@@ -1198,6 +1210,7 @@ const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnal
               onFavoriteToggle={handleFavorite}
               onAnalyze={handleAnalyze}
               analyzing={analyzingId}
+              onUpsell={onUpsell}
             />
           ))}
         </div>
@@ -1206,7 +1219,46 @@ const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnal
   );
 };
 
-const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProfile }) => {
+const FeaturedSection = ({ dark, onInstall, onAnalyze, analyzingId, onSelect, selectedBuild, onOpenProfile, onUpsell}) => {
+  const [featured, setFeatured] = React.useState([]);
+
+  React.useEffect(() => {
+    axios.get(`${API}/builds/featured/`, { headers: getToken() ? auth() : {} })
+      .then(r => setFeatured(r.data))
+      .catch(() => {});
+  }, []);
+
+  if (featured.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: '1.2rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f7d060' }}>⭐ Рекомендовані</span>
+        <div style={{ flex: 1, height: '1px', background: 'rgba(247,208,96,0.2)' }} />
+      </div>
+      <div className="bc-grid">
+        {featured.map(b => (
+          <BuildCard 
+            key={b.id} 
+            build={b} 
+            dark={dark}
+            selected={selectedBuild?.id === b.id}
+            onSelect={onSelect}
+            onInstall={onInstall}
+            onFavoriteToggle={() => {}}
+            onAnalyze={onAnalyze}
+            analyzing={analyzingId}
+            onOpenProfile={onOpenProfile}
+            onUpsell={onUpsell}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProfile, onUpsell}) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1280,7 +1332,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
     } catch (err) {
       const status = err.response?.status;
       if (status === 402) {
-        addToast({ type: 'error', message: 'AI-кредити вичерпано. Зверніться до адміністратора або придбайте преміум.', duration: 7000 });
+        onUpsell && onUpsell('credits');
       } else if (status === 401) {
         addToast({ type: 'error', message: 'Увійдіть в акаунт для використання AI-пошуку.', duration: 5000 });
       }
@@ -1395,6 +1447,16 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
           </div>
         )}
 
+        <FeaturedSection 
+          dark={dark} 
+          onInstall={handleInstall} 
+          onAnalyze={handleAnalyze} 
+          analyzingId={analyzingId} 
+          onSelect={handleSelect} 
+          selectedBuild={selectedBuild}
+          onOpenProfile={onOpenProfile}
+        />
+
         {activeType === 'rating' ? (
           <RatingTab
             dark={dark}
@@ -1427,6 +1489,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
                 onAnalyze={handleAnalyze}
                 analyzing={analyzingId}
                 onOpenProfile={onOpenProfile}
+                onUpsell={onUpsell}
               />
             ))}
           </div>

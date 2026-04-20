@@ -28,6 +28,7 @@ from .models import (
     AppealChat,
     AppealMessage,
     ProfileMessage,
+    FeaturedBuild
 )
 from .serializers import (
     AIAnalysisLogSerializer,
@@ -80,6 +81,7 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
  
     def get_queryset(self):
         from django.db.models import Avg, Count
+        from django.utils import timezone
  
         qs = Build.objects.filter(is_public=True).prefetch_related(
             "images", "components", "reviews", "posts"
@@ -129,6 +131,15 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
                 qs = qs.filter(avg_rating__lte=float(rating_max))
             except ValueError:
                 pass
+
+        user = self.request.user
+        is_premium_user = (
+            user.is_authenticated and
+            getattr(user, 'profile', None) and
+            user.profile.is_premium
+        )
+        if not is_premium_user:
+            qs = qs.filter(is_premium_only=False)
  
         return qs
  
@@ -842,7 +853,20 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         return BuildSubmission.objects.filter(submitted_by=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(submitted_by=self.request.user)
+        user = self.request.user
+        is_premium = getattr(user, 'profile', None) and user.profile.is_premium
+        if not is_premium:
+            active_count = BuildSubmission.objects.filter(
+                submitted_by=user,
+                status="pending"
+            ).count()
+            if active_count >= 1:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError(
+                    "Безкоштовні акаунти можуть мати лише 1 активну заявку. "
+                    "Оформіть преміум для необмеженої кількості заявок."
+                )
+        serializer.save(submitted_by=user)
 
     def destroy(self, request, *args, **kwargs):
         if not is_staff(request.user):
@@ -1741,3 +1765,31 @@ class CustomLoginView(APIView):
             pass
  
         return Response(serializer.validated_data)
+    
+class FeaturedBuildsView(APIView):
+    permission_classes = []
+ 
+    def get(self, request):
+        from django.utils import timezone
+        featured = FeaturedBuild.objects.filter(
+            expires_at__gt=timezone.now()
+        ).select_related("build__author").prefetch_related("build__images", "build__reviews")
+        builds = [f.build for f in featured]
+        return Response(
+            BuildSerializer(builds, many=True, context={"request": request}).data
+        )
+    
+class PromoteBuildView(APIView):
+    permission_classes = [IsAuthenticated]
+ 
+    def post(self, request, build_id):
+        from django.utils import timezone
+        from datetime import timedelta
+        build = get_object_or_404(Build, pk=build_id, author=request.user)
+        FeaturedBuild.objects.filter(build=build).delete()
+        FeaturedBuild.objects.create(
+            build=build,
+            promoted_by=request.user,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        return Response({"ok": True, "expires_at": timezone.now() + timedelta(days=7)})
