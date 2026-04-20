@@ -37,6 +37,8 @@ from .views import (
     PromoteBuildView,
 )
 
+from .workshop_views import WorkshopBuildView, WorkshopSaveView
+
 router = DefaultRouter()
 router.register(r"specs", PCSpecsViewSet, basename="specs")
 router.register(r"builds", BuildViewSet, basename="builds")
@@ -46,6 +48,8 @@ router.register(r"admin/builds", AdminBuildViewSet, basename="admin-builds")
 
 urlpatterns = [
     path("specs/auto/", PCSpecsAutoView.as_view(), name="specs-auto"),
+    path("builds/featured/", FeaturedBuildsView.as_view(), name="featured-builds"),
+    path("builds/<int:build_id>/promote/", PromoteBuildView.as_view(), name="promote-build"),
     path("", include(router.urls)),
     path("profile/", ProfileView.as_view(), name="profile"),
     path("tasks/<int:task_id>/", AnalysisTaskView.as_view(), name="task-status"),
@@ -75,4 +79,6 @@ urlpatterns = [
     path("users/<str:username>/builds/", PublicProfileBuildsView.as_view(), name="public-profile-builds"),
     path("users/<str:username>/messages/", ProfileMessageView.as_view(), name="profile-messages"),
     path("users/<str:username>/messages/<int:msg_id>/", ProfileMessageDeleteView.as_view(), name="profile-message-delete"),
+    path("workshop/build/", WorkshopBuildView.as_view(), name="workshop-build"),
+    path("workshop/save/", WorkshopSaveView.as_view(), name="workshop-save"),
 ]

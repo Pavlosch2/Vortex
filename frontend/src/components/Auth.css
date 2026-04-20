@@ -97,43 +97,17 @@
 }
 
 .header-welcome {
-    font-size: 0.82rem;
-    color: var(--color-dark-variant);
-    font-weight: 400;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.82rem;
+  color: var(--color-dark-variant);
+  font-weight: 400;
 }
 
 .header-welcome strong {
     color: var(--color-primary);
     font-weight: 600;
-}
-
-.dark-toggle {
-    background-color: var(--color-light);
-    display: flex;
-    align-items: center;
-    height: 1.6rem;
-    width: 4.2rem;
-    cursor: pointer;
-    border-radius: 0.4rem;
-    overflow: hidden;
-    transition: background 0.1s;
-}
-
-.dark-toggle .material-icons-sharp {
-    font-size: 1.2rem;
-    width: 50%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-dark-variant);
-    transition: background 0.2s, color 0.2s;
-}
-
-.dark-toggle .material-icons-sharp.active {
-    background-color: var(--color-primary);
-    color: #fff;
-    border-radius: 0.4rem;
 }
 
 .auth-body {

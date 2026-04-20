@@ -1241,8 +1241,8 @@ class AdminUserListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not is_admin(request.user):
-            return Response({"error": "Тільки адміністратори"}, status=403)
+        if not is_staff(request.user):
+            return Response({"error": "Недостатньо прав"}, status=403)
         users = User.objects.select_related("profile").all().order_by("-date_joined")
         return Response(
             UserAdminSerializer(users, many=True, context={"request": request}).data
@@ -1546,6 +1546,16 @@ class AdminBlockUserView(APIView):
             blocked_until=blocked_until,
             warning=warning,
         )
+        if get_role(request.user) == 'manager':
+            admins = User.objects.filter(profile__role='admin')
+            for admin in admins:
+                Notification.objects.create(
+                    user=admin,
+                    type="moderation_warning",
+                    body=f"Менеджер {request.user.username} заблокував користувача {user.username}. Причина: {reason}",
+                    link_type="",
+                    link_params={"blocked_user_id": user.id},
+                )
         return Response(UserBlockSerializer(block).data, status=201)
 
 

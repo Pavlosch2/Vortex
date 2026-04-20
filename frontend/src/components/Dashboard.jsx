@@ -18,6 +18,7 @@ import PricingPage from './PricingPage';
 import { useToast } from '../hooks/useToast';
 import { useNotifications } from '../hooks/useNotifications';
 import './styles/Dashboard.css';
+import Workshop from './Workshop';
 
 const API = 'http://127.0.0.1:8000/api';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
@@ -126,6 +127,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
     support: 'Підтримка',
     settings: 'Налаштування',
     admin: 'Панель керування',
+    workshop: 'Майстерня',
     pricing: 'Тарифи',
   };
 
@@ -185,6 +187,8 @@ export default function Dashboard({ onLogout, dark, setDark }) {
             <PCSpecsForm dark={dark} onSaved={() => setSpecsExist(true)} />
           </div>
         );
+      case 'workshop':
+        return <Workshop dark={dark} />;
       case 'admin':
         return <AdminPanel dark={dark} currentRole={userRole} addToast={addToast} navExtra={navExtra} />;
       default:
@@ -233,17 +237,6 @@ export default function Dashboard({ onLogout, dark, setDark }) {
               deleteAll={deleteAll}
               onNavigate={handleNotifNavigate}
             />
-            <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-              <div
-                className={`theme-toggle ${dark ? 'dark' : 'light'}`}
-                onClick={() => setDark(v => !v)}
-              >
-                {dark ? <Moon size={15} color="#6c9bcf" /> : <Sun size={15} color="#f7d060" />}
-                <span className={`theme-toggle-label ${dark ? 'dark' : 'light'}`}>
-                  {dark ? 'Dark' : 'Light'}
-                </span>
-              </div>
-            </div>
           </div>
         </header>
 

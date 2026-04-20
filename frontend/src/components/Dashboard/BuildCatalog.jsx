@@ -955,7 +955,7 @@ const MySubmissions = ({dark, onUpsell}) => {
   );
 };
 
-const SubmissionForm = ({ dark, onSuccess, addToast }) => {
+const SubmissionForm = ({ dark, onSuccess, addToast, onUpsell }) => {
   const [form, setForm] = useState({ title: '', description: '', build_type: 'build', tags: '', video_url: '' });
   const [file, setFile] = useState(null);
   const [cover, setCover] = useState(null);
@@ -1086,7 +1086,7 @@ const MIN_REVIEWS_OPTIONS = [
   { value: '50', label: '50+' },
 ];
  
-const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnalyzeRequest, onSelect, selectedBuild }) => {
+const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnalyzeRequest, onSelect, selectedBuild, onUpsell }) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -1455,6 +1455,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
           onSelect={handleSelect} 
           selectedBuild={selectedBuild}
           onOpenProfile={onOpenProfile}
+          onUpsell={onUpsell}
         />
 
         {activeType === 'rating' ? (
@@ -1523,8 +1524,8 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
                 ))}
               </div>
               {subSection === 'form'
-                ? <SubmissionForm dark={dark} onSuccess={() => setSubSection('list')} addToast={addToast} />
-                : <MySubmissions dark={dark} />
+                ? <SubmissionForm dark={dark} onSuccess={() => setSubSection('list')} addToast={addToast} onUpsell={onUpsell} />
+                : <MySubmissions dark={dark, onUpsell} />
               }
             </div>
           </div>

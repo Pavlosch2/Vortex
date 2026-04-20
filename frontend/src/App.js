@@ -11,7 +11,7 @@ const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_to
 
 const App = () => {
   const [token, setToken] = useState(localStorage.getItem('vortex_token') || null);
-  const [dark, setDark] = useState(localStorage.getItem('vortex_theme') === 'dark');
+  const [dark, setDark] = useState(true);
   const [resetParams, setResetParams] = useState(null);
   const [confirmParams, setConfirmParams] = useState(null);
   const [blockInfo, setBlockInfo] = useState(null);

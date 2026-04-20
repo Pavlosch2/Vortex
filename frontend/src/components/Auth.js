@@ -81,10 +81,6 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
         <p className="header-welcome">
           Welcome to the <strong>Vortex system!</strong>
         </p>
-        <div className="dark-toggle" onClick={() => setDark(!dark)}>
-          <span className={`material-icons-sharp${!dark ? ' active' : ''}`}>light_mode</span>
-          <span className={`material-icons-sharp${dark ? ' active' : ''}`}>dark_mode</span>
-        </div>
       </header>
 
       <div className="auth-body">

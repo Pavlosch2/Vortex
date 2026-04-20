@@ -510,3 +510,20 @@ class FeaturedBuild(models.Model):
  
     def __str__(self):
         return f"Featured: {self.build.title}"
+
+
+class WorkshopDraft(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="workshop_drafts"
+    )
+    build_name = models.CharField(max_length=255, blank=True)
+    zip_file = models.FileField(upload_to="workshop_drafts/")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Чернетка майстерні"
+        verbose_name_plural = "Чернетки майстерні"
+ 
+    def __str__(self):
+        return f"Draft({self.user.username}): {self.build_name}"

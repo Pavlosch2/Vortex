@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, LayoutGrid, HeadphonesIcon, Settings, ShieldCheck, Bot, Zap } from 'lucide-react';
+import { LogOut, LayoutGrid, HeadphonesIcon, Settings, ShieldCheck, Bot, Zap, Wrench } from 'lucide-react';
 import logo from '../assets/vortexLogo.png';
 import './styles/Sidebar.css';
 
@@ -9,6 +9,7 @@ const Sidebar = ({ active, setActive, dark, open, setOpen, userRole, onLogout })
     { id: 'ai', label: 'Vortex AI', icon: Bot },
     { id: 'support', label: 'Підтримка', icon: HeadphonesIcon },
     { id: 'settings', label: 'Налаштування', icon: Settings },
+    { id: 'workshop', label: 'Майстерня', icon: Wrench },
     { id: 'pricing', label: 'Тарифи', icon: Zap },
     ...(userRole === 'manager' || userRole === 'admin'
       ? [{ id: 'admin', label: 'Панель керування', icon: ShieldCheck }]
