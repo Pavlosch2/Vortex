@@ -12,27 +12,6 @@ const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_to
 
 const DEFAULT_FOLDERS = ['CLEO', 'models', 'ASI', 'moonloader'];
 
-function buildTree(folders, files) {
-  const tree = {};
-  folders.forEach(f => { tree[f] = { type: 'folder', children: {}, open: true }; });
-  files.forEach(({ path, file, id }) => {
-    const parts = path.split('/');
-    if (parts.length === 1) {
-      tree[parts[0]] = { type: 'file', file, id, path };
-    } else {
-      const folder = parts[0];
-      const name = parts.slice(1).join('/');
-      if (!tree[folder]) tree[folder] = { type: 'folder', children: {}, open: true };
-      tree[folder].children[name] = { type: 'file', file, id, path };
-    }
-  });
-  return tree;
-}
-
-function flattenFiles(folders, files) {
-  return files.map(f => ({ path: f.path, file: f.file }));
-}
-
 const CatalogPicker = ({ dark, onPick, onClose }) => {
   const [builds, setBuilds] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -41,8 +20,6 @@ const CatalogPicker = ({ dark, onPick, onClose }) => {
   const [search, setSearch] = useState('');
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
-  const cardBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)';
-  const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.15)';
 
   React.useEffect(() => {
     axios.get(`${API}/builds/`, { headers: auth() })
@@ -179,6 +156,118 @@ const FinishModal = ({ dark, buildName, setBuildName, onSubmit, onCancel, sendin
   );
 };
 
+const WorkshopScanModal = ({ dark, zipBlob, buildName, onDownload, onCancel }) => {
+  const [state, setState] = React.useState('scanning');
+  const [result, setResult] = React.useState(null);
+  const cancelRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const run = async () => {
+      try {
+        const fd = new FormData();
+        fd.append('file', zipBlob, `${buildName}.zip`);
+        const res = await axios.post(`${API}/workshop/scan/`, fd, {
+          headers: { ...auth(), 'Content-Type': 'multipart/form-data' },
+        });
+        if (!cancelRef.current) {
+          setResult(res.data);
+          setState('result');
+        }
+      } catch (err) {
+        if (!cancelRef.current) setState('error');
+      }
+    };
+    run();
+    return () => { cancelRef.current = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const SCAN_LABEL = {
+    clean:      { text: 'Загроз не знайдено', color: '#1B9c85', icon: '✅' },
+    suspicious: { text: 'Виявлено підозрілі файли', color: '#f7d060', icon: '⚠️' },
+    dangerous:  { text: 'Виявлено небезпечні файли', color: '#e05252', icon: '🔴' },
+  };
+
+  const bg = dark ? 'rgba(20,22,28,0.98)' : 'rgba(255,255,255,0.98)';
+  const border = dark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(132,139,200,0.2)';
+  const textColor = dark ? '#edeffd' : '#363949';
+  const subColor = dark ? '#a3bdcc' : '#677483';
+
+  return (
+    <div className="ws-finish-overlay">
+      <div className="ws-finish-modal" style={{ background: bg, border, textAlign: 'center' }}>
+        {state === 'scanning' && (
+          <>
+            <Loader size={28} className="spin" color="#6c9bcf" style={{ margin: '0 auto 1rem' }} />
+            <h3 style={{ color: textColor, margin: '0 0 0.4rem' }}>Антивірусне сканування...</h3>
+            <p style={{ color: subColor, fontSize: '0.78rem', margin: '0 0 1rem' }}>
+              Перевіряємо вашу збірку через 70+ антивірусних движків
+            </p>
+            <button onClick={onCancel} style={{
+              background: 'none', border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : 'rgba(132,139,200,0.2)'}`,
+              color: subColor, padding: '0.5rem 1.2rem', borderRadius: '0.65rem',
+              fontFamily: 'Poppins, sans-serif', fontSize: '0.8rem', cursor: 'pointer',
+            }}>
+              Скасувати
+            </button>
+          </>
+        )}
+
+        {state === 'result' && result && (() => {
+          const s = SCAN_LABEL[result.status];
+          return (
+            <>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{s.icon}</div>
+              <h3 style={{ color: s.color, margin: '0 0 0.3rem' }}>{s.text}</h3>
+              <p style={{ color: subColor, fontSize: '0.78rem', margin: '0 0 1.2rem' }}>
+                Виявлено: {result.engines_detected} з {result.engines_total} антивірусів
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={onDownload} style={{
+                  flex: 1, padding: '0.65rem', borderRadius: '0.7rem', border: 'none',
+                  background: 'linear-gradient(135deg, #6c9bcf, #1B9c85)',
+                  color: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: '0.83rem',
+                  fontWeight: 600, cursor: 'pointer',
+                }}>
+                  Завантажити ZIP
+                </button>
+                <button onClick={onCancel} style={{
+                  padding: '0.65rem 1rem', borderRadius: '0.7rem', background: 'none',
+                  border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : 'rgba(132,139,200,0.2)'}`,
+                  color: subColor, fontFamily: 'Poppins, sans-serif', fontSize: '0.83rem', cursor: 'pointer',
+                }}>
+                  Скасувати
+                </button>
+              </div>
+            </>
+          );
+        })()}
+
+        {state === 'error' && (
+          <>
+            <p style={{ color: '#e05252', marginBottom: '1rem' }}>Помилка сканування. Можливо недостатньо перевірок.</p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={onDownload} style={{
+                flex: 1, padding: '0.6rem', borderRadius: '0.7rem', border: 'none',
+                background: '#6c9bcf', color: '#fff', fontFamily: 'Poppins, sans-serif',
+                fontSize: '0.8rem', cursor: 'pointer',
+              }}>
+                Завантажити без перевірки
+              </button>
+              <button onClick={onCancel} style={{
+                padding: '0.6rem 1rem', borderRadius: '0.7rem', background: 'none',
+                border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : 'rgba(132,139,200,0.2)'}`,
+                color: subColor, fontFamily: 'Poppins, sans-serif', fontSize: '0.8rem', cursor: 'pointer',
+              }}>
+                Скасувати
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function Workshop({ dark }) {
   const [folders, setFolders] = useState([...DEFAULT_FOLDERS]);
   const [files, setFiles] = useState([]);
@@ -193,6 +282,8 @@ export default function Workshop({ dark }) {
   const [buildName, setBuildName] = useState('');
   const [sending, setSending] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [zipBlob, setZipBlob] = useState(null);
+  const [showScan, setShowScan] = useState(false);
   const fileInputRef = useRef(null);
   const idCounter = useRef(0);
 
@@ -284,19 +375,27 @@ export default function Workshop({ dark }) {
         headers: { ...auth(), 'Content-Type': 'multipart/form-data' },
         responseType: 'blob',
       });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${buildName.trim()}.zip`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const blob = new Blob([res.data], { type: 'application/zip' });
+      setZipBlob(blob);
       setShowFinish(false);
+      setShowScan(true);
     } catch {}
     setSending(false);
   };
 
+  const handleDownload = () => {
+    if (!zipBlob) return;
+    const url = window.URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${buildName.trim()}.zip`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    setShowScan(false);
+    setZipBlob(null);
+  };
+
   const filesInFolder = (folder) => files.filter(f => f.path.startsWith(`${folder}/`));
-  const rootFiles = files.filter(f => !f.path.includes('/'));
 
   return (
     <div className={`ws-root ${theme}`}>
@@ -456,6 +555,16 @@ export default function Workshop({ dark }) {
           onSubmit={handleFinish}
           onCancel={() => setShowFinish(false)}
           sending={sending}
+        />
+      )}
+
+      {showScan && zipBlob && (
+        <WorkshopScanModal
+          dark={dark}
+          zipBlob={zipBlob}
+          buildName={buildName}
+          onDownload={handleDownload}
+          onCancel={() => { setShowScan(false); setZipBlob(null); }}
         />
       )}
     </div>

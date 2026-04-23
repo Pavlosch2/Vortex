@@ -58,7 +58,7 @@ const CollapsedToast = ({ toast, onRestore }) => {
     }} onClick={() => onRestore(toast.id)}>
       <div style={{ flexShrink: 0 }}>{ICONS[toast.type] || ICONS.info}</div>
       <span style={{ fontSize: '0.72rem', color: '#a3bdcc', whiteSpace: 'nowrap' }}>
-        Аналіз триває…
+        {toast.collapsedLabel || toast.message}
       </span>
       <ChevronUp size={13} color="#6c9bcf" />
     </div>

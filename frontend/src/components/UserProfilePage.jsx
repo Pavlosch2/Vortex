@@ -117,7 +117,17 @@ export default function UserProfilePage({ username, dark, onBack, onInstall, onA
             }
           </div>
           <div className="upp-identity">
-            <h2 className="upp-username" style={{ color: '#fff' }}>{profile.username}</h2>
+            <h2
+              className="upp-username"
+              style={{
+                color: profile.profile_color || '#fff',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+              }}
+            >
+              {profile.plan === 'pro' && <span title="Pro користувач">⚡</span>}
+              {profile.username}
+            </h2>
             <span className="upp-role" style={{ color: roleColor }}>{ROLE_LABELS[profile.role] || profile.role}</span>
           </div>
         </div>

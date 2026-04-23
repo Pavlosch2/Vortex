@@ -92,7 +92,16 @@ export function UserLink({ username, dark, onOpenProfile, children }) {
                   }
                 </div>
                 <div className="uhover-info">
-                  <span className="uhover-name" style={{ color: textColor }}>{profile.username}</span>
+                  <span
+                    className="uhover-name"
+                    style={{
+                      color: profile.profile_color || textColor,
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                    }}
+                  >
+                    {profile.plan === 'pro' && <span title="Pro" style={{ fontSize: '0.8em' }}>⚡</span>}
+                    {profile.username}
+                  </span>
                   <span className="uhover-role" style={{ color: ROLE_COLORS[profile.role] || subColor }}>
                     {ROLE_LABELS[profile.role] || profile.role}
                   </span>

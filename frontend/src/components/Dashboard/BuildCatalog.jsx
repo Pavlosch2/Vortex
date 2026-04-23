@@ -350,6 +350,72 @@ const InstallButton = ({ build, onInstall }) => {
   );
 };
 
+const UserScanButton = ({ buildId, dark }) => {
+  const [state, setState] = React.useState('idle');
+  const [result, setResult] = React.useState(null);
+
+  const SCAN_LABEL = {
+    clean:      { text: 'Чисто',      color: '#1B9c85', icon: '✅' },
+    suspicious: { text: 'Підозріло',  color: '#f7d060', icon: '⚠️' },
+    dangerous:  { text: 'Небезпечно', color: '#e05252', icon: '🔴' },
+  };
+
+  const handleClick = async () => {
+    setState('loading');
+    try {
+      await axios.post(`${API}/builds/${buildId}/scan-result/`, {}, { headers: auth() });
+      const res = await axios.get(`${API}/builds/${buildId}/scan-result/`, { headers: auth() });
+      if (res.data.status === null) {
+        setState('not_scanned');
+      } else {
+        setResult(res.data);
+        setState('result');
+      }
+    } catch (err) {
+      if (err.response?.data?.error === 'no_access' || err.response?.data?.error === 'no_credits') {
+        setState('no_access');
+      } else {
+        setState('idle');
+      }
+    }
+  };
+
+  if (state === 'result' && result) {
+    const s = SCAN_LABEL[result.status];
+    return (
+      <span style={{ fontSize: '0.75rem', color: s.color, fontWeight: 600 }}>
+        {s.icon} {s.text} ({result.engines_detected}/{result.engines_total})
+      </span>
+    );
+  }
+
+  if (state === 'not_scanned') {
+    return <span style={{ fontSize: '0.72rem', color: '#7a8aab' }}>🔍 Сканування ще не проводилось</span>;
+  }
+
+  if (state === 'no_access') {
+    return (
+      <span style={{ fontSize: '0.72rem', color: '#f7d060' }}>
+        🔒 Потрібен Pro план або покупка
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={state === 'loading'}
+      style={{
+        fontSize: '0.73rem', padding: '4px 10px', borderRadius: '7px',
+        border: '1px solid rgba(108,155,207,0.25)', background: 'rgba(108,155,207,0.08)',
+        color: '#6c9bcf', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+      }}
+    >
+      {state === 'loading' ? <Loader size={12} className="spin" /> : '🔍'} Перевірити на віруси
+    </button>
+  );
+};
+
 const BuildDetailPanel = ({ build, dark, onClose, onInstall, onAnalyze, analyzing, token, onBuildUpdate, addToast }) => {
   const [tab, setTab] = useState('FILES');
   const [files, setFiles] = useState(null);
@@ -485,6 +551,9 @@ const BuildDetailPanel = ({ build, dark, onClose, onInstall, onAnalyze, analyzin
           <p className="bdp__rating" style={{ color: subColor }}>
             ★ {build.rating} · {build.review_count} {build.review_count === 1 ? 'оцінка' : 'оцінок'}
           </p>
+          <div style={{ marginTop: '0.4rem' }}>
+            <UserScanButton buildId={build.id} dark={dark} />
+          </div>
         </div>
         <div className="bdp__hactions">
           <InstallButton build={build} onInstall={onInstall} />
@@ -981,16 +1050,18 @@ const SubmissionForm = ({ dark, onSuccess, addToast, onUpsell }) => {
       await axios.post(`${API}/submissions/`, fd, { headers: { ...auth(), 'Content-Type': 'multipart/form-data' } });
       onSuccess();
     } catch (err) {
-      const msg = err.response?.data?.non_field_errors?.[0]
-        || err.response?.data?.detail
-        || '';
-      if (msg.includes('активну заявку')) {
-        onUpsell && onUpsell('submission');
-      } else {
-        setError(msg || 'Помилка надсилання');
-      }
-    } finally {
-      setSending(false);
+    const detail = err.response?.data;
+    let message = 'Помилка при надсиланні';
+    if (Array.isArray(detail) && detail.length > 0) {
+      message = detail[0];
+    } else if (typeof detail === 'string') {
+      message = detail;
+    } else if (detail?.detail) {
+      message = detail.detail;
+    } else if (detail?.non_field_errors?.[0]) {
+      message = detail.non_field_errors[0];
+    }
+    setError(message);
     }
   };
 
@@ -1095,7 +1166,6 @@ const RatingTab = ({ dark, onInstall, onAnalyze, analyzingId, specsExist, onAnal
   const [ratingMin, setRatingMin] = useState(1.0);
   const [ratingMax, setRatingMax] = useState(5.0);
  
-  const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const cardBg = dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)';
@@ -1525,7 +1595,7 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
               </div>
               {subSection === 'form'
                 ? <SubmissionForm dark={dark} onSuccess={() => setSubSection('list')} addToast={addToast} onUpsell={onUpsell} />
-                : <MySubmissions dark={dark, onUpsell} />
+                : <MySubmissions dark={dark} onUpsell={onUpsell} />
               }
             </div>
           </div>

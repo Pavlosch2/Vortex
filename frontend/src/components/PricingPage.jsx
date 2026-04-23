@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Bot, Package, TrendingUp, Server, Check, ArrowLeft } from 'lucide-react';
+import { Zap, Bot, Package, TrendingUp, Server, Check, ArrowLeft, Shield, Star } from 'lucide-react';
 import './styles/PricingPage.css';
 
 const CREDIT_PACKS = [
@@ -8,20 +8,31 @@ const CREDIT_PACKS = [
   { amount: 100, price: 7, per: '$0.07/кредит' },
 ];
 
-const PREMIUM_FEATURES = [
-  '100 AI-аналізів сумісності на місяць',
-  'Пріоритетна модерація заявок — 24 год',
-  'Виділений золотий нік ⚡ у коментарях',
-  'Ранній доступ до Premium збірок',
-  'Необмежена кількість активних заявок',
+const FREE_FEATURES = [
+  { text: '5 AI-аналізів на місяць' },
+  { text: 'Стандартна модерація — до 72 год' },
+  { text: '1 активна заявка одночасно' },
+  { text: 'Доступ до всіх безкоштовних збірок' },
+  { text: 'Коментарі та відгуки' },
 ];
 
-const FREE_FEATURES = [
-  '5 AI-аналізів на місяць',
-  'Стандартна модерація — до 72 год',
-  '1 активна заявка одночасно',
-  'Доступ до всіх безкоштовних збірок',
-  'Коментарі та відгуки',
+const STANDARD_FEATURES = [
+  { text: '50 AI-аналізів на місяць' },
+  { text: 'Пріоритетна модерація — 24 год' },
+  { text: '3 активні заявки одночасно' },
+  { text: '1 безкоштовна антивірусна перевірка/міс' },
+  { text: 'Ранній доступ до Premium збірок' },
+];
+
+const PRO_FEATURES = [
+  { text: '100 AI-аналізів на місяць' },
+  { text: 'Пріоритетна модерація — 24 год' },
+  { text: '7 активних заявок одночасно' },
+  { text: '5 безкоштовних антивірусних перевірок/міс' },
+  { text: 'Перегляд результатів сканування збірок' },
+  { text: 'Виділений золотий нік ⚡' },
+  { text: 'Кастомізація профілю: колір ніку, рамка аватарки, значок' },
+  { text: 'Ранній доступ до Premium збірок' },
 ];
 
 const OTHER_PURCHASES = [
@@ -42,6 +53,14 @@ const OTHER_PURCHASES = [
     color: '#1B9c85',
   },
   {
+    icon: <Shield size={20} color="#e05252" />,
+    title: 'Антивірусна перевірка',
+    desc: 'Перевірка збірки через 70+ антивірусних движків VirusTotal. Результат доступний одразу.',
+    price: '$3',
+    per: 'разово',
+    color: '#e05252',
+  },
+  {
     icon: <Server size={20} color="#a3bdcc" />,
     title: 'API доступ',
     desc: 'Для серверів Arizona RP. Прямий доступ до каталогу збірок через API.',
@@ -57,8 +76,6 @@ export default function PricingPage({ dark, onBack }) {
   const subColor = dark ? '#a3bdcc' : '#677483';
   const cardBg = dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.85)';
   const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.15)';
-  const premiumBorder = '1px solid rgba(247,208,96,0.35)';
-  const premiumBg = dark ? 'rgba(247,208,96,0.06)' : 'rgba(247,208,96,0.05)';
 
   const handleBuy = () => setBillingNote(true);
 
@@ -85,7 +102,8 @@ export default function PricingPage({ dark, onBack }) {
           </div>
         )}
 
-        <div className="pricing-plans">
+        <div className="pricing-plans pricing-plans--three">
+
           <div className="pricing-card" style={{ background: cardBg, border }}>
             <div className="pricing-card-header">
               <span className="pricing-plan-name" style={{ color: subColor }}>Безкоштовно</span>
@@ -96,7 +114,7 @@ export default function PricingPage({ dark, onBack }) {
             <ul className="pricing-feature-list">
               {FREE_FEATURES.map((f, i) => (
                 <li key={i} className="pricing-feature-item" style={{ color: subColor }}>
-                  <Check size={14} color="#a3bdcc" /> {f}
+                  <Check size={14} color="#a3bdcc" /> {f.text}
                 </li>
               ))}
             </ul>
@@ -105,27 +123,54 @@ export default function PricingPage({ dark, onBack }) {
             </button>
           </div>
 
-          <div className="pricing-card pricing-card--premium" style={{ background: premiumBg, border: premiumBorder }}>
+          <div className="pricing-card pricing-card--premium"
+            style={{ background: dark ? 'rgba(247,208,96,0.06)' : 'rgba(247,208,96,0.05)', border: '1px solid rgba(247,208,96,0.35)' }}>
             <div className="pricing-card-popular">⚡ Найпопулярніше</div>
             <div className="pricing-card-header">
-              <span className="pricing-plan-name" style={{ color: '#f7d060' }}>
-                <Zap size={14} /> Преміум
+              <span className="pricing-plan-name" style={{ color: '#f7d060', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Zap size={14} /> Стандарт
               </span>
               <div className="pricing-plan-price" style={{ color: textColor }}>
                 $6 <span style={{ fontSize: '0.8rem', color: subColor }}>/ місяць</span>
               </div>
             </div>
             <ul className="pricing-feature-list">
-              {PREMIUM_FEATURES.map((f, i) => (
+              {STANDARD_FEATURES.map((f, i) => (
                 <li key={i} className="pricing-feature-item" style={{ color: textColor }}>
-                  <Check size={14} color="#f7d060" /> {f}
+                  <Check size={14} color="#f7d060" /> {f.text}
                 </li>
               ))}
             </ul>
             <button className="pricing-btn pricing-btn--premium" onClick={handleBuy}>
-              Оформити преміум
+              Оформити Стандарт
             </button>
           </div>
+
+          <div className="pricing-card pricing-card--pro"
+            style={{ background: dark ? 'rgba(108,155,207,0.08)' : 'rgba(108,155,207,0.06)', border: '1px solid rgba(108,155,207,0.4)' }}>
+            <div className="pricing-card-popular pricing-card-popular--pro">
+              <Star size={11} /> Pro
+            </div>
+            <div className="pricing-card-header">
+              <span className="pricing-plan-name" style={{ color: '#6c9bcf', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Shield size={14} /> Pro
+              </span>
+              <div className="pricing-plan-price" style={{ color: textColor }}>
+                $17 <span style={{ fontSize: '0.8rem', color: subColor }}>/ місяць</span>
+              </div>
+            </div>
+            <ul className="pricing-feature-list">
+              {PRO_FEATURES.map((f, i) => (
+                <li key={i} className="pricing-feature-item" style={{ color: textColor }}>
+                  <Check size={14} color="#6c9bcf" /> {f.text}
+                </li>
+              ))}
+            </ul>
+            <button className="pricing-btn pricing-btn--pro" onClick={handleBuy}>
+              Оформити Pro
+            </button>
+          </div>
+
         </div>
 
         <div className="pricing-section-title" style={{ color: textColor }}>
@@ -172,7 +217,8 @@ export default function PricingPage({ dark, onBack }) {
               <div className="pricing-other-price-wrap">
                 <span className="pricing-other-price" style={{ color: item.color }}>{item.price}</span>
                 <span className="pricing-other-per" style={{ color: subColor }}>{item.per}</span>
-                <button className="pricing-btn pricing-btn--other" style={{ borderColor: `${item.color}44`, color: item.color }}
+                <button className="pricing-btn pricing-btn--other"
+                  style={{ borderColor: `${item.color}44`, color: item.color }}
                   onClick={handleBuy}>
                   Обрати
                 </button>

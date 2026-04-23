@@ -174,3 +174,28 @@
 .pp-bio-view:hover {
   border-color: rgba(108,155,207,0.5);
 }
+
+
+.pp-avatar--frame-gold {
+  border: 2.5px solid #f7d060 !important;
+  box-shadow: 0 0 10px rgba(247, 208, 96, 0.5);
+}
+
+.pp-avatar--frame-animated {
+  border: 2.5px solid transparent !important;
+  background-clip: padding-box;
+  animation: frameRotate 3s linear infinite;
+  box-shadow: 0 0 0 2.5px #6c9bcf, 0 0 12px rgba(108, 155, 207, 0.6);
+}
+
+@keyframes frameRotate {
+  0%   { box-shadow: 0 0 0 2.5px #6c9bcf, 0 0 12px rgba(108,155,207,0.6); }
+  33%  { box-shadow: 0 0 0 2.5px #a78bfa, 0 0 12px rgba(167,139,250,0.6); }
+  66%  { box-shadow: 0 0 0 2.5px #1B9c85, 0 0 12px rgba(27,156,133,0.6); }
+  100% { box-shadow: 0 0 0 2.5px #6c9bcf, 0 0 12px rgba(108,155,207,0.6); }
+}
+
+.pp-avatar--frame-neon {
+  border: 2.5px solid #a78bfa !important;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.7), 0 0 20px rgba(167, 139, 250, 0.3);
+}

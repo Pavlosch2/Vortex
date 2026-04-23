@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Cpu, Activity, Database, Monitor,
-  Loader, Camera, Pencil, Check, X, Package,
+  Loader, Camera, Pencil, Check, X, Package, Star,
 } from 'lucide-react';
 import axios from 'axios';
 import './styles/ProfilePanel.css';
@@ -52,7 +52,7 @@ export const ImageDropZone = ({ onFile, children, style = {} }) => {
   );
 };
 
-const AvatarUploader = ({ avatarUrl, username, onUpdate }) => {
+const AvatarUploader = ({ avatarUrl, username, onUpdate, frame }) => {
   const [hover, setHover] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
@@ -232,6 +232,7 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
               avatarUrl={profile?.avatar}
               username={profile?.username}
               dark={dark}
+              frame={profile?.avatar_frame}
               onUpdate={(newUrl) => setProfile(p => ({ ...p, avatar: newUrl }))}
             />
 
@@ -262,8 +263,7 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
                 <h3
                   className="pp-username"
-                  style={{ color: textColor, cursor: 'pointer' }}
-                  onClick={() => profile?.username && onOpenProfile && onOpenProfile(profile.username)}
+                  style={{ color: profile?.profile_color || textColor, cursor: 'pointer' }}
                   title="Переглянути профіль"
                 >
                   {profile?.username || '—'}
@@ -288,6 +288,18 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
             {profile?.ai_credits !== undefined && (
               <div className={`pp-credits ${profile.ai_credits > 0 ? 'positive' : 'empty'}`}>
                 ⚡ {profile.ai_credits} AI {profile.ai_credits === 1 ? 'кредит' : 'кредити'}
+              </div>
+            )}
+
+            {profile?.av_checks_left > 0 && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                marginTop: '0.35rem', padding: '0.3rem 0.8rem',
+                borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600,
+                background: 'rgba(224,82,82,0.1)', color: '#e05252',
+                border: '1px solid rgba(224,82,82,0.25)',
+              }}>
+                🛡 {profile.av_checks_left} {profile.av_checks_left === 1 ? 'AV перевірка' : 'AV перевірок'}
               </div>
             )}
 
@@ -336,6 +348,67 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
               </div>
             )}
           </div>
+
+          {profile?.plan === 'pro' && (
+          <div style={{ marginBottom: '1rem' }}>
+            <h4 className="pp-specs-heading" style={{ color: textColor }}>
+              <Star size={16} color="#f7d060" /> Pro кастомізація
+            </h4>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div>
+                <p style={{ color: subTextColor, fontSize: '0.7rem', margin: '0 0 0.3rem' }}>Колір нікнейму</p>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {['', '#f7d060', '#6c9bcf', '#1B9c85', '#e05252', '#a78bfa', '#f97316'].map(color => (
+                    <button
+                      key={color}
+                      onClick={async () => {
+                        await axios.patch(`${API}/profile/`, { profile_color: color }, { headers: authH() });
+                        setProfile(p => ({ ...p, profile_color: color }));
+                      }}
+                      style={{
+                        width: '22px', height: '22px', borderRadius: '50%', cursor: 'pointer',
+                        background: color || 'rgba(255,255,255,0.15)',
+                        border: profile?.profile_color === color ? '2px solid #fff' : '2px solid transparent',
+                        outline: 'none',
+                      }}
+                      title={color || 'За замовчуванням'}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p style={{ color: subTextColor, fontSize: '0.7rem', margin: '0 0 0.3rem' }}>Рамка аватарки</p>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {[
+                    { value: '', label: 'Без рамки' },
+                    { value: 'gold', label: '🥇 Золота' },
+                    { value: 'animated', label: '✨ Анімована' },
+                    { value: 'neon', label: '💜 Неонова' },
+                  ].map(frame => (
+                    <button
+                      key={frame.value}
+                      onClick={async () => {
+                        await axios.patch(`${API}/profile/`, { avatar_frame: frame.value }, { headers: authH() });
+                        setProfile(p => ({ ...p, avatar_frame: frame.value }));
+                      }}
+                      style={{
+                        padding: '3px 8px', borderRadius: '6px', fontSize: '0.68rem',
+                        fontFamily: 'Poppins, sans-serif', cursor: 'pointer', border: 'none',
+                        background: profile?.avatar_frame === frame.value
+                          ? 'rgba(108,155,207,0.25)' : inputBg,
+                        color: profile?.avatar_frame === frame.value ? '#6c9bcf' : subTextColor,
+                      }}
+                    >
+                      {frame.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
           <div>
             <h4 className="pp-specs-heading" style={{ color: textColor }}>

@@ -190,7 +190,7 @@ export default function Dashboard({ onLogout, dark, setDark }) {
       case 'workshop':
         return <Workshop dark={dark} />;
       case 'admin':
-        return <AdminPanel dark={dark} currentRole={userRole} addToast={addToast} navExtra={navExtra} />;
+        return <AdminPanel dark={dark} currentRole={userRole} addToast={addToast} removeToast={removeToast} navExtra={navExtra} />;
       default:
         return null;
     }

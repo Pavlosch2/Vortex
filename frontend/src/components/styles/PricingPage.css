@@ -306,3 +306,31 @@
   border-radius: 1.1rem;
   padding: 1.25rem 1.5rem;
 }
+
+.pricing-plans--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 800px) {
+  .pricing-plans--three {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pricing-card--pro {
+  box-shadow: 0 0 0 1px rgba(108, 155, 207, 0.2), 0 8px 32px rgba(108, 155, 207, 0.08);
+}
+
+.pricing-card-popular--pro {
+  background: linear-gradient(135deg, #6c9bcf, #4a7bb0);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pricing-btn--pro {
+  background: linear-gradient(135deg, #6c9bcf, #4a7bb0);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 16px rgba(108, 155, 207, 0.3);
+}

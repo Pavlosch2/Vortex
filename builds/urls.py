@@ -39,6 +39,13 @@ from .views import (
 
 from .workshop_views import WorkshopBuildView, WorkshopSaveView
 
+from .av_views import (
+    AdminScanBuildView, 
+    AdminScanStatusView, 
+    UserScanResultView, 
+    WorkshopScanView
+)
+
 router = DefaultRouter()
 router.register(r"specs", PCSpecsViewSet, basename="specs")
 router.register(r"builds", BuildViewSet, basename="builds")
@@ -81,4 +88,8 @@ urlpatterns = [
     path("users/<str:username>/messages/<int:msg_id>/", ProfileMessageDeleteView.as_view(), name="profile-message-delete"),
     path("workshop/build/", WorkshopBuildView.as_view(), name="workshop-build"),
     path("workshop/save/", WorkshopSaveView.as_view(), name="workshop-save"),
+    path("admin/builds/<int:build_id>/scan/", AdminScanBuildView.as_view(), name="admin-scan-build"),
+    path("admin/builds/<int:build_id>/scan-status/", AdminScanStatusView.as_view(), name="admin-scan-status"),
+    path("builds/<int:build_id>/scan-result/", UserScanResultView.as_view(), name="user-scan-result"),
+    path("workshop/scan/", WorkshopScanView.as_view(), name="workshop-scan"),
 ]

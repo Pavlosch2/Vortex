@@ -511,7 +511,94 @@ const SupportTab = ({ dark, addToast }) => {
   );
 };
 
-const BuildsTab = ({ dark, currentRole, addToast }) => {
+const AdminScanButton = ({ buildId, dark, addToast, removeToast }) => {
+  const [scanning, setScanning] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const cancelRef = React.useRef(false);
+
+  const SCAN_LABEL = {
+    clean:      { text: 'Чисто',      color: '#1B9c85', icon: '✅' },
+    suspicious: { text: 'Підозріло',  color: '#f7d060', icon: '⚠️' },
+    dangerous:  { text: 'Небезпечно', color: '#e05252', icon: '🔴' },
+    error:      { text: 'Помилка сканування', color: '#a3bdcc', icon: '⚠️' },
+  };
+
+  React.useEffect(() => {
+    axios.get(`${API}/admin/builds/${buildId}/scan-status/`, { headers: auth() })
+      .then(r => { if (r.data.status) setResult(r.data); })
+      .catch(() => {});
+  }, [buildId]);
+
+  const startScan = async () => {
+    setScanning(true);
+    cancelRef.current = false;
+    const prevScannedAt = result?.scanned_at ?? null;
+
+const scanToastId = addToast({
+      type: 'info',
+      message: '🔍 Антивірусне сканування запущено...',
+      duration: 0,
+      collapsible: true,
+      onCancel: () => { cancelRef.current = true; setScanning(false); },
+    });
+
+    try {
+      await axios.post(`${API}/admin/builds/${buildId}/scan/`, {}, { headers: auth() });
+      const poll = setInterval(async () => {
+        if (cancelRef.current) { clearInterval(poll); return; }
+        try {
+          const res = await axios.get(`${API}/admin/builds/${buildId}/scan-status/`, { headers: auth() });
+          if (['clean', 'suspicious', 'dangerous', 'error'].includes(res.data.status) && res.data.scanned_at && res.data.scanned_at !== prevScannedAt) {
+            clearInterval(poll);
+            setResult(res.data);
+            setScanning(false);
+            removeToast(scanToastId);
+            const enginesInfo = res.data.engines_total > 0
+              ? ` (${res.data.engines_detected}/${res.data.engines_total})`
+              : '';
+            addToast({
+              type: res.data.status === 'clean' ? 'success' : 'error',
+              message: `Сканування завершено: ${SCAN_LABEL[res.data.status]?.text}${enginesInfo}`,
+              duration: 8000,
+            });
+          }
+        } catch { clearInterval(poll); setScanning(false); }
+      }, 6000);
+    } catch {
+      setScanning(false);
+      addToast({ type: 'error', message: 'Помилка запуску сканування', duration: 5000 });
+    }
+  };
+
+  if (result?.status) {
+    const s = SCAN_LABEL[result.status];
+    return (
+      <span style={{ fontSize: '0.72rem', color: s.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {s.icon} {s.text} ({result.engines_detected}/{result.engines_total})
+        <button onClick={startScan} disabled={scanning}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6c9bcf', fontSize: '0.65rem' }}>
+          ↻
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={startScan}
+      disabled={scanning}
+      style={{
+        fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px',
+        border: '1px solid rgba(108,155,207,0.3)', background: 'rgba(108,155,207,0.1)',
+        color: '#6c9bcf', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+      }}
+    >
+      {scanning ? <Loader size={11} className="spin" /> : '🔍'} Сканувати
+    </button>
+  );
+};
+
+const BuildsTab = ({ dark, currentRole, addToast, removeToast }) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -759,6 +846,7 @@ const BuildsTab = ({ dark, currentRole, addToast }) => {
                       {acting === b.id ? <Loader size={11} className="spin" /> : '↺'} Відновити
                     </button>
                   )}
+                  <AdminScanButton buildId={b.id} dark={dark} addToast={addToast} removeToast={removeToast} />
                   {isConfirm ? (
                     <div className="ap-confirm-row">
                       <span className="ap-confirm-label">Видалити?</span>
@@ -900,13 +988,12 @@ const WarningsTab = ({ dark, currentRole, addToast }) => {
   const [blockModal, setBlockModal] = useState(null);
   const [now, setNow] = useState(Date.now());
  
-  const theme = dark ? 'dark' : 'light';
+  const canModerate = currentRole === 'admin' || currentRole === 'manager';
+ 
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.18)';
   const cardBg = dark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.85)';
- 
-  const canModerate = currentRole === 'admin' || currentRole === 'manager';
  
   useEffect(() => {
     if (!canModerate) return;
@@ -1151,16 +1238,29 @@ const UsersTab = ({ dark, currentRole, addToast }) => {
                     </select>
                   )}
                   {currentRole === 'admin' && (
+                    <>
+                      <select className={`ap-select ${theme}`} style={{ color: textColor }}
+                        defaultValue={u.plan || 'free'}
+                        onChange={e => setPatch(p => ({ ...p, plan: e.target.value }))}>
+                        <option value="free">Безкоштовно</option>
+                        <option value="standard">Стандарт $6</option>
+                        <option value="pro">Pro $17</option>
+                      </select>
+
+                      <input type="datetime-local"
+                        className={`ap-credits-input ${theme}`}
+                        style={{ color: textColor }}
+                        placeholder="Підписка діє до"
+                        defaultValue={u.plan_expires_at ? u.plan_expires_at.slice(0, 16) : ''}
+                        onChange={e => setPatch(p => ({ ...p, plan_expires_at: e.target.value }))}
+                      />
+                    </>
+                  )}
+                  {currentRole === 'admin' && (
                     <input type="number" min={0} placeholder="AI кредити"
                       className={`ap-credits-input ${theme}`} style={{ color: textColor }}
                       defaultValue={u.ai_credits}
                       onChange={e => setPatch(p => ({ ...p, ai_credits: parseInt(e.target.value) }))} />
-                  )}
-                  {currentRole === 'admin' && (
-                    <label className="ap-premium-label" style={{ color: subColor }}>
-                      <input type="checkbox" defaultChecked={u.is_premium}
-                        onChange={e => setPatch(p => ({ ...p, is_premium: e.target.checked }))} /> Premium
-                    </label>
                   )}
                   {currentRole === 'admin' && (
                     <button className="ap-btn ap-btn--save" disabled={saving === u.id} onClick={() => save(u.id)}>
@@ -1216,7 +1316,7 @@ const UsersTab = ({ dark, currentRole, addToast }) => {
 };
  
 
-const AdminPanel = ({ dark, currentRole, addToast }) => {
+const AdminPanel = ({ dark, currentRole, addToast, removeToast }) => {
   const [tab, setTab] = useState('submissions');
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
@@ -1249,7 +1349,7 @@ const AdminPanel = ({ dark, currentRole, addToast }) => {
       </div>
       {tab === 'submissions' && <SubmissionsTab dark={dark} addToast={addToast} />}
       {tab === 'support' && <SupportTab dark={dark} addToast={addToast} />}
-      {tab === 'builds' && <BuildsTab dark={dark} currentRole={currentRole} addToast={addToast} />}
+      {tab === 'builds' && <BuildsTab dark={dark} currentRole={currentRole} addToast={addToast} removeToast={removeToast} />}
       {tab === 'users' && <UsersTab dark={dark} currentRole={currentRole} addToast={addToast} />}
       {tab === 'warnings' && <WarningsTab dark={dark} currentRole={currentRole} addToast={addToast} />}
     </div>

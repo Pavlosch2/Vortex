@@ -773,6 +773,16 @@ class ProfileView(APIView):
                 return Response({"error": "Цей нікнейм вже зайнятий"}, status=400)
             request.user.username = new_username
             request.user.save(update_fields=["username"])
+
+        # Кастомізація — тільки для Pro
+        if profile.plan == "pro":
+            profile_color = request.data.get("profile_color")
+            avatar_frame = request.data.get("avatar_frame")
+            if profile_color is not None:
+                profile.profile_color = profile_color
+            if avatar_frame is not None:
+                profile.avatar_frame = avatar_frame
+
         profile.save()
         return Response(ProfileSerializer(profile, context={"request": request}).data)
     
@@ -898,7 +908,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.reviewed_by = request.user
         sub.published_build = build
         sub.save()
-        notify_submission_status(submission.submitted_by, submission.title, "approved", submission.id)
+        notify_submission_status(sub.submitted_by, sub.title, "approved", sub.id)
 
         import threading
 
@@ -1256,10 +1266,33 @@ class AdminUserDetailView(APIView):
         if not is_admin(request.user):
             return Response({"error": "Тільки адміністратори"}, status=403)
         user = get_object_or_404(User, pk=user_id)
-        s = UserAdminSerializer(user, data=request.data, partial=True)
-        s.is_valid(raise_exception=True)
-        s.save()
-        return Response(s.data)
+
+        plan = request.data.get("plan")
+        plan_expires_at = request.data.get("plan_expires_at")
+        ai_credits = request.data.get("ai_credits")
+        role = request.data.get("role")
+
+        profile = user.profile
+        if plan is not None:
+            if plan not in ("free", "standard", "pro"):
+                return Response({"error": "Невірний план"}, status=400)
+            profile.plan = plan
+            if plan == "standard":
+                profile.av_checks_left = max(profile.av_checks_left, 1)
+            elif plan == "pro":
+                profile.av_checks_left = max(profile.av_checks_left, 5)
+            elif plan == "free":
+                profile.av_checks_left = 0
+        if plan_expires_at is not None:
+            from django.utils.dateparse import parse_datetime
+            profile.plan_expires_at = parse_datetime(plan_expires_at)
+        if ai_credits is not None:
+            profile.ai_credits = int(ai_credits)
+        if role is not None:
+            profile.role = role
+        profile.save()
+
+        return Response(UserAdminSerializer(user, context={"request": request}).data)
 
     def delete(self, request, user_id):
         if not is_admin(request.user):

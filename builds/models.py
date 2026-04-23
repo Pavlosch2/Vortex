@@ -18,12 +18,32 @@ class Profile(models.Model):
     bio = models.TextField(max_length=500, blank=True)
     role = models.CharField(max_length=10, choices=ROLES, default="user")
     ai_credits = models.IntegerField(default=5, verbose_name="Баланс AI-аналізів")
-    is_premium = models.BooleanField(default=False)
     banner = models.ImageField(upload_to="banners/", null=True, blank=True, verbose_name="Банер профілю")
     last_seen = models.DateTimeField(null=True, blank=True, verbose_name="Остання активність")
+    plan_expires_at = models.DateTimeField(null=True, blank=True, verbose_name="Підписка діє до")
+    PLAN_CHOICES = [
+        ("free", "Безкоштовно"),
+        ("standard", "Стандарт $6/міс"),
+        ("pro", "Pro $17/міс"),
+    ]
+    FRAME_CHOICES = [
+        ("", "Без рамки"),
+        ("gold", "Золота"),
+        ("animated", "Анімована"),
+        ("neon", "Неонова"),
+    ]
+ 
+    plan = models.CharField(max_length=10, choices=PLAN_CHOICES, default="free", verbose_name="План підписки")
+    av_checks_left = models.IntegerField(default=0, verbose_name="Залишилось антивірусних перевірок")
+    profile_color = models.CharField(max_length=7, blank=True, default="", verbose_name="Колір ніку (Pro)")
+    avatar_frame = models.CharField(max_length=20, blank=True, default="", choices=FRAME_CHOICES, verbose_name="Рамка аватарки (Pro)")
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
+    
+    @property
+    def is_premium(self):
+        return self.plan in ("standard", "pro")
 
 
 @receiver(post_save, sender=User)
@@ -527,3 +547,36 @@ class WorkshopDraft(models.Model):
  
     def __str__(self):
         return f"Draft({self.user.username}): {self.build_name}"
+    
+class VirusScanResult(models.Model):
+    STATUS_CHOICES = [
+        ("clean", "Чисто"),
+        ("suspicious", "Підозріло"),
+        ("dangerous", "Небезпечно"),
+    ]
+    build = models.OneToOneField(Build, on_delete=models.CASCADE, related_name="virus_scan")
+    scanned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="virus_scans")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    engines_total = models.IntegerField(default=0)
+    engines_detected = models.IntegerField(default=0)
+    scan_id = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    scanned_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        verbose_name = "Результат антивірусної перевірки"
+ 
+    def __str__(self):
+        return f"{self.build.title}: {self.get_status_display()} ({self.engines_detected}/{self.engines_total})"
+ 
+ 
+class UserScanPurchase(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="scan_purchases")
+    build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="scan_purchases")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ("user", "build")
+ 
+    def __str__(self):
+        return f"{self.user.username} → {self.build.title}"

@@ -67,7 +67,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     avatar = serializers.SerializerMethodField()
     banner = serializers.SerializerMethodField()
- 
+    is_premium = serializers.SerializerMethodField()
+
     def get_avatar(self, obj):
         if not obj.avatar:
             return None
@@ -75,7 +76,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.avatar.url)
         return obj.avatar.url
- 
+
     def get_banner(self, obj):
         if not obj.banner:
             return None
@@ -83,10 +84,17 @@ class ProfileSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.banner.url)
         return obj.banner.url
- 
+
+    def get_is_premium(self, obj):
+        return obj.plan in ("standard", "pro")
+
     class Meta:
         model = Profile
-        fields = ["username", "role", "ai_credits", "is_premium", "avatar", "banner", "bio"]
+        fields = [
+            "username", "role", "ai_credits", "is_premium",
+            "avatar", "banner", "bio", "plan",
+            "profile_color", "avatar_frame", "av_checks_left",
+        ]
 
 
 class ProfileMessageSerializer(serializers.ModelSerializer):
@@ -254,12 +262,18 @@ class BuildSerializer(serializers.ModelSerializer):
 
 class BuildReviewSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
-    is_author_premium = serializers.BooleanField(source="user.profile.is_premium", read_only=True, default=False)
+    is_author_premium = serializers.SerializerMethodField()
+
+    def get_is_author_premium(self, obj):
+        try:
+            return obj.user.profile.is_premium
+        except Exception:
+            return False
 
     class Meta:
         model = BuildReview
-        fields = ["id", "username", "score", "text", "created_at"]
-        read_only_fields = ["id", "username", "created_at"]
+        fields = ["id", "username", "score", "text", "created_at", "is_author_premium",]
+        read_only_fields = ["id", "username", "created_at", "is_author_premium",]
 
     def validate_score(self, value):
         if not 1 <= value <= 5:
@@ -317,6 +331,7 @@ class BuildPostSerializer(serializers.ModelSerializer):
             "text",
             "is_pinned",
             "is_own",
+            "is_author_premium",
             "replies",
             "created_at",
         ]
@@ -325,10 +340,10 @@ class BuildPostSerializer(serializers.ModelSerializer):
             "username",
             "is_pinned",
             "is_own",
+            "is_author_premium",
             "replies",
             "created_at",
         ]
-
 
 class BuildSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(
@@ -483,23 +498,17 @@ class SupportTicketSerializer(serializers.ModelSerializer):
 class UserAdminSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source="profile.role")
     ai_credits = serializers.IntegerField(source="profile.ai_credits")
-    is_premium = serializers.BooleanField(source="profile.is_premium")
+    plan = serializers.CharField(source="profile.plan", required=False)
+    plan_expires_at = serializers.DateTimeField(source="profile.plan_expires_at", required=False, allow_null=True)
     avatar = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            "id",
-            "username",
-            "email",
-            "is_active",
-            "role",
-            "ai_credits",
-            "is_premium",
-            "avatar",
-            "date_joined",
-            "is_blocked",
+            "id", "username", "email", "is_active",
+            "role", "ai_credits", "plan", "plan_expires_at",
+            "avatar", "date_joined", "is_blocked",
         ]
 
     def get_avatar(self, obj):
