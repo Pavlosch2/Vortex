@@ -6,7 +6,7 @@ import {
   Download, MemoryStick, RefreshCw,
 } from 'lucide-react';
 
-const API = 'http://127.0.0.1:8000/api';
+const API = 'http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api';
 const UTILITY_PORT = 27420;
 const UTILITY_URL = 'https://github.com/Pavlosch2/Vortex/releases/download/v1.1.0/VortexSpecs.exe';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });

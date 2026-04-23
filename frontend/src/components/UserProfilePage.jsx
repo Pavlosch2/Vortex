@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ArrowLeft, Send, Trash2, Loader, Package } from 'lucide-react';
 import './styles/UserProfilePage.css';
 
-const API = 'http://127.0.0.1:8000/api';
+const API = 'http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api';
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
 const getToken = () => localStorage.getItem('vortex_token');
 
