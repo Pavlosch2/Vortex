@@ -6,7 +6,7 @@ import {
 import axios from 'axios';
 import './styles/ProfilePanel.css';
 
-const API = 'http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api';
+const API = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
 const token = () => localStorage.getItem('vortex_token');
 const authH = () => ({ Authorization: `Bearer ${token()}` });
 

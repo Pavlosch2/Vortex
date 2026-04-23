@@ -3,7 +3,7 @@ import axios from 'axios';
 import './Auth.css';
 import logo from '../assets/vortexLogo.png';
 
-const API = 'http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api';
+const API = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
 
 const Auth = ({ onLoginSuccess, dark, setDark }) => {
   const [view, setView] = useState('login');
