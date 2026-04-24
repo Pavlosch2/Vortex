@@ -6,6 +6,7 @@ from django.urls import include, path
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+import os
 
 from builds.views import (
     PasswordResetConfirmView,
@@ -34,18 +35,18 @@ def google_callback_redirect(request):
         user_id = request.session.get("_auth_user_id")
         if not user_id:
             logger.warning("No user_id in session, redirecting with error")
-            return redirect("http://localhost:3000?auth_error=1")
+            return redirect(f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}?auth_error=1")
         try:
             user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
-            return redirect("http://localhost:3000?auth_error=1")
+            return redirect(f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}?auth_error=1")
     else:
         user = request.user
 
     refresh = RefreshToken.for_user(user)
     token = str(refresh.access_token)
     logger.warning(f"Redirecting with token for user={user.username}")
-    return redirect(f"http://localhost:3000?token={token}")
+    return redirect(f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}?token={token}")
 
 
 urlpatterns = [

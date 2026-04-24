@@ -5,7 +5,7 @@ import {
   Clock, ChevronDown, ChevronUp, Loader,
 } from 'lucide-react';
 
-const API  = "`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/api";
+const API  = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
 
 const verdictStyle = (verdict = '') => {

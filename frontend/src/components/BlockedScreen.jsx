@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './styles/BlockedScreen.css';
 
-const API = "`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/api";
+const API = `${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api`;
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_token') });
 
 function formatDate(dateStr) {
