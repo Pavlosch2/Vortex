@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-const API = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
+const API = "`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/api";
 
 export default function ConfirmEmail({ uid, token, onDone }) {
   const [status, setStatus] = useState('loading');

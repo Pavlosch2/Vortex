@@ -3,7 +3,7 @@ import axios from 'axios';
 import './Auth.css';
 import logo from '../assets/vortexLogo.png';
 
-const API = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
+const API = "`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/api";
 
 const Auth = ({ onLoginSuccess, dark, setDark }) => {
   const [view, setView] = useState('login');
@@ -117,7 +117,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
                 <span>або</span>
               </div>
 
-              <a href="http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/auth/google/login/"
+              <a href="`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/auth/google/login/"
                 className="google-btn animation" style={{'--i':3,'--j':24}}>
                 <svg width="18" height="18" viewBox="0 0 48 48" style={{marginRight:'8px',flexShrink:0}}>
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>

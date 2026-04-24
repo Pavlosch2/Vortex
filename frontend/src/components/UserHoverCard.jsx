@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './styles/UserHoverCard.css';
 
-const API = "http://${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api";
+const API = "`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}`/api";
 
 const ROLE_LABELS = {
   user: 'Користувач',
