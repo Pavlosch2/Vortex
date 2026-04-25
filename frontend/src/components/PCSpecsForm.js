@@ -3,7 +3,7 @@ import axios from 'axios';
 import {
   Cpu, Monitor, Save, CheckCircle, AlertCircle,
   Loader, Plus, Trash2, Pencil, Check, X,
-  Download, MemoryStick, RefreshCw,
+  Download, MemoryStick,
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/api`;
@@ -142,6 +142,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
     loadSpecs();
     return () => clearInterval(pollRef.current);
   }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const loadSpecs = async () => {
     try {

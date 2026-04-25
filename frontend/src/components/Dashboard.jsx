@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Menu, Sun, Moon } from 'lucide-react';
-
+import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import BuildCatalog from './Dashboard/BuildCatalog';
 import AdminPanel from './Dashboard/AdminPanel';

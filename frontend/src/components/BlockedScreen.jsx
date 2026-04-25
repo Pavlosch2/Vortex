@@ -68,6 +68,7 @@ export default function BlockedScreen({ blockInfo, onUnblocked }) {
       return () => clearTimeout(t);
     }
   }, [chatClosed]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   if (appeal) {
     return (
