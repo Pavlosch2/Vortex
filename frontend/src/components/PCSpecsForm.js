@@ -141,8 +141,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
   useEffect(() => {
     loadSpecs();
     return () => clearInterval(pollRef.current);
-  }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const loadSpecs = async () => {
     try {
