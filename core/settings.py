@@ -138,6 +138,12 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
 
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://vortex-production-7730.up.railway.app",
+    "https://vortex-coral-two.vercel.app",
+]
+
 CORS_ALLOW_HEADERS = [
     "accept",
     "authorization",
