@@ -132,7 +132,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3001",
     "http://127.0.0.1:3001",
     "https://vortex-theta-henna.vercel.app",
+    "https://vortex-coral-two.vercel.app/",
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
