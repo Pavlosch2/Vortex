@@ -3,6 +3,6 @@
   "rules": {
     "no-template-curly-in-string": "off",
     "no-unused-vars": "warn",
-    "react-hooks/exhaustive-deps": "warn"
+    "react-hooks/exhaustive-deps": "off"
   }
 }
