@@ -132,7 +132,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3001",
     "http://127.0.0.1:3001",
     "https://vortex-theta-henna.vercel.app",
-    "https://vortex-coral-two.vercel.app/",
+    "https://vortex-coral-two.vercel.app",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
