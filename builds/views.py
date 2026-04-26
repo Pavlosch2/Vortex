@@ -1335,12 +1335,12 @@ class RegisterView(generics.CreateAPIView):
         )
  
         send_mail(
-            subject="VortexPro — підтвердження email",
+            subject="Vortex — підтвердження email",
             message=f"Підтвердіть вашу пошту: {confirm_url}",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
             html_message=html,
-            fail_silently=False,
+            fail_silently=True,
         )
 
 
