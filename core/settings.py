@@ -105,9 +105,17 @@ JWT_AUTH_COOKIE = "vortex-auth"
 JWT_AUTH_REFRESH_COOKIE = "vortex-refresh"
 
 ACCOUNT_LOGIN_METHODS = {"username"}
-SOCIALACCOUNT_ADAPTER = 'builds.adapter.CustomSocialAccountAdapter'
 ACCOUNT_SIGNUP_FIELDS = ["username*", "email", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_EMAIL_REQUIRED = False
+ACCOUNT_USERNAME_REQUIRED = True
+
+SOCIALACCOUNT_ADAPTER = 'builds.adapter.CustomSocialAccountAdapter'
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_REQUIRED = False
+SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_ONLY = False
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
@@ -118,15 +126,11 @@ SOCIALACCOUNT_PROVIDERS = {
         },
         "SCOPE": ["profile", "email"],
         "AUTH_PARAMS": {"access_type": "online"},
+        "VERIFIED_EMAIL": True,
     }
 }
 
-SOCIALACCOUNT_EMAIL_REQUIRED = False
-SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
-SOCIALACCOUNT_AUTO_SIGNUP = True
-ACCOUNT_USERNAME_REQUIRED = False
 LOGIN_REDIRECT_URL = "/accounts/profile/"
-SOCIALACCOUNT_LOGIN_ON_GET = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
