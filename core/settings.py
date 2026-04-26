@@ -107,8 +107,6 @@ JWT_AUTH_REFRESH_COOKIE = "vortex-refresh"
 ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_SIGNUP_FIELDS = ["username*", "email", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
-ACCOUNT_EMAIL_REQUIRED = False
-ACCOUNT_USERNAME_REQUIRED = True
 
 SOCIALACCOUNT_ADAPTER = 'builds.adapter.CustomSocialAccountAdapter'
 SOCIALACCOUNT_AUTO_SIGNUP = True
@@ -197,3 +195,4 @@ DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@Vortex.com")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 VIRUS_TOTAL_API_KEY = os.getenv("VIRUS_TOTAL_API_KEY", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")

@@ -1313,7 +1313,6 @@ class RegisterView(generics.CreateAPIView):
         import threading
         from django.conf import settings
         from django.contrib.auth.tokens import default_token_generator
-        from django.core.mail import send_mail
         from django.template.loader import render_to_string
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
@@ -1334,16 +1333,17 @@ class RegisterView(generics.CreateAPIView):
 
         def send_confirmation():
             try:
-                send_mail(
-                    subject="Vortex — підтвердження email",
-                    message=f"Підтвердіть вашу пошту: {confirm_url}",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    html_message=html,
-                    fail_silently=True,
-                )
-            except Exception:
-                pass
+                import resend
+                resend.api_key = getattr(settings, "RESEND_API_KEY", "")
+                resend.Emails.send({
+                    "from": "onboarding@resend.dev",
+                    "to": user.email,
+                    "subject": "Vortex — підтвердження email",
+                    "html": html,
+                })
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[Email] Помилка: {e}")
 
         threading.Thread(target=send_confirmation, daemon=True).start()
 
@@ -1382,7 +1382,6 @@ class PasswordResetRequestView(APIView):
     def post(self, request):
         from django.conf import settings
         from django.contrib.auth.tokens import default_token_generator
-        from django.core.mail import send_mail
         from django.template.loader import render_to_string
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
@@ -1415,14 +1414,21 @@ class PasswordResetRequestView(APIView):
             },
         )
 
-        send_mail(
-            subject="VortexPro — відновлення паролю",
-            message=f"Перейдіть за посиланням для скидання паролю: {reset_url}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            html_message=html,
-            fail_silently=False,
-        )
+        def send_reset():
+            try:
+                import resend
+                resend.api_key = getattr(settings, "RESEND_API_KEY", "")
+                resend.Emails.send({
+                    "from": "onboarding@resend.dev",
+                    "to": email,
+                    "subject": "Vortex — відновлення паролю",
+                    "html": html,
+                })
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[Email] Помилка: {e}")
+        import threading
+        threading.Thread(target=send_reset, daemon=True).start()
         return Response({"detail": "Якщо такий email зареєстровано - лист надіслано."})
 
 
