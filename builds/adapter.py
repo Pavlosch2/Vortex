@@ -4,6 +4,9 @@ import re
 class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_auto_signup_allowed(self, request, sociallogin):
         return True
+    
+    def is_signup_required(self, request, sociallogin):
+        return False
 
     def pre_social_login(self, request, sociallogin):
         if sociallogin.is_existing:
