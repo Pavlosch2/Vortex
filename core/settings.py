@@ -105,7 +105,7 @@ JWT_AUTH_COOKIE = "vortex-auth"
 JWT_AUTH_REFRESH_COOKIE = "vortex-refresh"
 
 ACCOUNT_LOGIN_METHODS = {"username"}
-ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*", "password2*"]
+ACCOUNT_SIGNUP_FIELDS = ["username*", "email", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
 
 SOCIALACCOUNT_PROVIDERS = {
