@@ -1310,39 +1310,42 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
  
     def perform_create(self, serializer):
+        import threading
         from django.conf import settings
         from django.contrib.auth.tokens import default_token_generator
         from django.core.mail import send_mail
         from django.template.loader import render_to_string
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
- 
+
         user = serializer.save()
         user.is_active = False
         user.save(update_fields=["is_active"])
- 
+
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
         confirm_url = f"{frontend_url}/confirm-email/{uid}/{token}/"
- 
+
         html = render_to_string(
             "registration/vortex_email_confirm.html",
-            {
-                "username": user.username,
-                "confirm_url": confirm_url,
-            },
-        )
- 
-        send_mail(
-            subject="Vortex — підтвердження email",
-            message=f"Підтвердіть вашу пошту: {confirm_url}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            html_message=html,
-            fail_silently=True,
+            {"username": user.username, "confirm_url": confirm_url},
         )
 
+        def send_confirmation():
+            try:
+                send_mail(
+                    subject="Vortex — підтвердження email",
+                    message=f"Підтвердіть вашу пошту: {confirm_url}",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    html_message=html,
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
+
+        threading.Thread(target=send_confirmation, daemon=True).start()
 
 class EmailConfirmView(APIView):
     """GET /api/auth/confirm-email/<uid>/<token>/"""

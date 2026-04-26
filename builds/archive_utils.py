@@ -17,7 +17,7 @@ def _get_ia_session():
 
 def _make_identifier(build):
     slug = re.sub(r"[^a-z0-9]+", "-", build.title.lower()).strip("-")[:40]
-    return f"vortexpro-{build.build_type}-{build.id}-{slug}"
+    return f"Vortex-{build.build_type}-{build.id}-{slug}"
 
 
 def upload_to_archive(build):

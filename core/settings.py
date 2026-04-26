@@ -193,7 +193,7 @@ EMAIL_USE_TLS = False
 EMAIL_USE_SSL = True
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@vortexpro.com")
+DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@Vortex.com")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 VIRUS_TOTAL_API_KEY = os.getenv("VIRUS_TOTAL_API_KEY", "")
