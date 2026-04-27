@@ -1336,7 +1336,7 @@ class RegisterView(generics.CreateAPIView):
                 import resend
                 resend.api_key = getattr(settings, "RESEND_API_KEY", "")
                 resend.Emails.send({
-                    "from": "onboarding@resend.dev",
+                    "from": "noreply@vortex-arizona.online",
                     "to": user.email,
                     "subject": "Vortex — підтвердження email",
                     "html": html,
@@ -1419,7 +1419,7 @@ class PasswordResetRequestView(APIView):
                 import resend
                 resend.api_key = getattr(settings, "RESEND_API_KEY", "")
                 resend.Emails.send({
-                    "from": "onboarding@resend.dev",
+                    "from": "noreply@vortex-arizona.online",
                     "to": email,
                     "subject": "Vortex — відновлення паролю",
                     "html": html,
