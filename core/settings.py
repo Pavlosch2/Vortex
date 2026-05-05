@@ -6,10 +6,17 @@ import os
 from datetime import timedelta
 from pathlib import Path
 import dj_database_url
+import sentry_sdk
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    send_default_pii=False,
+)
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
