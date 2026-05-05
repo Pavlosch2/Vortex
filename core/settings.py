@@ -145,6 +145,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3001",
     "https://vortex-theta-henna.vercel.app",
     "https://vortex-coral-two.vercel.app",
+    "https://vortex-arizona.online",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
@@ -154,6 +155,8 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "https://vortex-production-7730.up.railway.app",
     "https://vortex-coral-two.vercel.app",
+    "https://vortex-arizona.online",
+    "https://api.vortex-arizona.online",
 ]
 
 CORS_ALLOW_HEADERS = [
