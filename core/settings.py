@@ -197,3 +197,12 @@ DEFAULT_FROM_EMAIL = os.getenv("EMAIL_HOST_USER", "noreply@Vortex.com")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 VIRUS_TOTAL_API_KEY = os.getenv("VIRUS_TOTAL_API_KEY", "")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+
+if os.getenv("B2_BUCKET_NAME"):
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+    AWS_ACCESS_KEY_ID = os.getenv("B2_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.getenv("B2_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.getenv("B2_BUCKET_NAME")
+    AWS_S3_ENDPOINT_URL = os.getenv("B2_ENDPOINT_URL")
+    AWS_S3_CUSTOM_DOMAIN = os.getenv("B2_PUBLIC_DOMAIN")
+    MEDIA_URL = f"https://{os.getenv('B2_PUBLIC_DOMAIN')}/"
