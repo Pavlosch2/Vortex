@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     "background_task",
     "builds",
+    "storages",
 ]
 
 SITE_ID = 1
