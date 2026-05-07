@@ -44,8 +44,30 @@ const SpecsDisplay = ({ spec, dark }) => (
   </div>
 );
 
-const SpecForm = ({ dark, initial, onSave, onCancel, saving }) => {
-  const [form, setForm] = useState({ ...EMPTY, ...initial });
+const SpecForm = ({ dark, initial, onSave, onCancel, saving, mode }) => { // Додано mode у пропси
+  const storageKey = `vortex_draft_${mode}_${initial.id || 'new'}`;
+  
+  const [form, setForm] = useState(() => {
+    const saved = localStorage.getItem(storageKey);
+    return saved ? JSON.parse(saved) : { ...EMPTY, ...initial };
+  });
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(form));
+  }, [form, storageKey]);
+
+  // Цю функцію тепер використовуємо в onClick кнопки "Зберегти"
+  const handleSave = () => {
+    localStorage.removeItem(storageKey);
+    onSave(form);
+  };
+
+  // Цю функцію використовуємо в onClick кнопки "Скасувати"
+  const handleCancel = () => {
+    localStorage.removeItem(storageKey);
+    onCancel();
+  };
+
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const inputBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(108,155,207,0.06)';
@@ -95,7 +117,7 @@ const SpecForm = ({ dark, initial, onSave, onCancel, saving }) => {
       <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.2rem' }}>
         <button
           disabled={saving || !form.cpu_model.trim() || !form.gpu_model.trim()}
-          onClick={() => onSave(form)}
+          onClick={handleSave} // ВИПРАВЛЕНО: тепер використовується handleSave
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
             padding: '0.7rem', borderRadius: '0.7rem', border: 'none', cursor: 'pointer',
@@ -108,7 +130,7 @@ const SpecForm = ({ dark, initial, onSave, onCancel, saving }) => {
           Зберегти
         </button>
         {onCancel && (
-          <button onClick={onCancel} style={{
+          <button onClick={handleCancel} style={{ // ВИПРАВЛЕНО: тепер використовується handleCancel
             padding: '0.7rem 1rem', borderRadius: '0.7rem', cursor: 'pointer',
             background: 'none', border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(132,139,200,0.25)',
             color: dark ? '#a3bdcc' : '#677483', fontFamily: 'Poppins, sans-serif', fontSize: '0.83rem',
@@ -142,6 +164,10 @@ export default function PCSpecsForm({ dark, onSaved }) {
     loadSpecs();
     return () => clearInterval(pollRef.current);
   }, []); // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeId) localStorage.setItem('vortex_active_spec_id', activeId);
+  }, [activeId]);
 
   const loadSpecs = async () => {
     try {
@@ -394,6 +420,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
           onSave={saveSpec}
           onCancel={() => setMode('view')}
           saving={saving}
+          mode="edit"
         />
       )}
 
@@ -404,6 +431,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
           onSave={saveSpec}
           onCancel={specs.length > 0 ? () => { setMode('view'); setActiveId(specs[0].id); } : null}
           saving={saving}
+          mode="add"
         />
       )}
 

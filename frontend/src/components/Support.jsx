@@ -426,7 +426,19 @@ const TicketCard = ({ ticket, dark, onRefresh, addToast }) => {
 };
 
 const SubmitForm = ({ dark, onSuccess, addToast }) => {
-  const [form,    setForm]    = useState({ subject: '', message: '' });
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vortex_support_form');
+      return saved ? JSON.parse(saved) : { subject: '', message: '' };
+    } catch {
+      return { subject: '', message: '' };
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('vortex_support_form', JSON.stringify(form));
+  }, [form]);
+
   const [files,   setFiles]   = useState([]);
   const [sending, setSending] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -466,6 +478,11 @@ const SubmitForm = ({ dark, onSuccess, addToast }) => {
       await axios.post(`${API}/support/`, fd, {
         headers: { ...auth(), 'Content-Type': 'multipart/form-data' },
       });
+      await axios.post(`${API}/support/`, fd, {
+        headers: { ...auth(), 'Content-Type': 'multipart/form-data' },
+      });
+      localStorage.removeItem('vortex_support_form');
+      localStorage.removeItem('vortex_support_tab');
       onSuccess();
     } catch (err) {
       if (addToast) addToast(err.response?.data?.detail || 'Помилка надсилання', 'error');
@@ -630,7 +647,14 @@ const TicketList = ({ dark, onNewTicket, addToast }) => {
 };
 
 const Support = ({ dark, addToast }) => {
-  const [tab,       setTab]       = useState('list');
+  const [tab, setTab] = useState(
+    localStorage.getItem('vortex_support_tab') || 'list'
+  );
+  
+  useEffect(() => {
+    localStorage.setItem('vortex_support_tab', tab);
+  }, [tab]);
+
   const [submitted, setSubmitted] = useState(false);
 
   const textColor = dark ? '#edeffd' : '#363949';

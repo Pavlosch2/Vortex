@@ -1025,7 +1025,17 @@ const MySubmissions = ({dark, onUpsell}) => {
 };
 
 const SubmissionForm = ({ dark, onSuccess, addToast, onUpsell }) => {
-  const [form, setForm] = useState({ title: '', description: '', build_type: 'build', tags: '', video_url: '' });
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vortex_submission_form');
+      return saved ? JSON.parse(saved) : { title: '', description: '', build_type: 'build', tags: '', video_url: '' };
+    } catch {
+      return { title: '', description: '', build_type: 'build', tags: '', video_url: '' };
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem('vortex_submission_form', JSON.stringify(form));
+  }, [form]);
   const [file, setFile] = useState(null);
   const [cover, setCover] = useState(null);
   const [sending, setSending] = useState(false);
@@ -1048,6 +1058,7 @@ const SubmissionForm = ({ dark, onSuccess, addToast, onUpsell }) => {
       fd.append('source_file', file);
       if (cover) fd.append('cover_image', cover);
       await axios.post(`${API}/submissions/`, fd, { headers: { ...auth(), 'Content-Type': 'multipart/form-data' } });
+      localStorage.removeItem('vortex_submission_form');
       onSuccess();
     } catch (err) {
     const detail = err.response?.data;
@@ -1334,8 +1345,19 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
   const [searchQuery, setSearchQuery] = useState('');
   const [aiSearching, setAiSearching] = useState(false);
   const [creditsLeft, setCreditsLeft] = useState(null);
-  const [activeType, setActiveType] = useState('all');
-  const [activeTag, setActiveTag] = useState('');
+  const [activeType, setActiveType] = useState(
+    localStorage.getItem('vortex_filter_type') || 'all'
+  );
+  const [activeTag, setActiveTag] = useState(
+    localStorage.getItem('vortex_filter_tag') || ''
+  );
+  useEffect(() => {
+    localStorage.setItem('vortex_filter_type', activeType);
+  }, [activeType]);
+
+  useEffect(() => {
+    localStorage.setItem('vortex_filter_tag', activeTag);
+  }, [activeTag]);
   const [allTags, setAllTags] = useState([]);
   const [installBuild, setInstallBuild] = useState(null);
   const handleInstall = useCallback((build) => {

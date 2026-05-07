@@ -774,7 +774,7 @@ class ProfileView(APIView):
             request.user.username = new_username
             request.user.save(update_fields=["username"])
 
-        # Кастомізація — тільки для Pro
+        # Кастомізація тільки для Pro
         if profile.plan == "pro":
             profile_color = request.data.get("profile_color")
             avatar_frame = request.data.get("avatar_frame")

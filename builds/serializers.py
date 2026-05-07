@@ -27,6 +27,14 @@ from .models import (
     ProfileMessage,
 )
 
+def build_media_url(url, request):
+    if not url:
+        return None
+    if url.startswith('http'):
+        return url
+    if request:
+        return request.build_absolute_uri(url)
+    return url
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -74,16 +82,14 @@ class ProfileSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(obj.avatar.url)
-        return obj.avatar.url
-
+            return build_media_url(obj.avatar.url, request)
+        
     def get_banner(self, obj):
         if not obj.banner:
             return None
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(obj.banner.url)
-        return obj.banner.url
+            return build_media_url(obj.banner.url, request)
 
     def get_is_premium(self, obj):
         return obj.plan in ("standard", "pro")
@@ -107,7 +113,7 @@ class ProfileMessageSerializer(serializers.ModelSerializer):
             request = self.context.get("request")
             avatar = obj.author.profile.avatar
             if avatar and request:
-                return request.build_absolute_uri(avatar.url)
+                return build_media_url(avatar.url, request)
         except Exception:
             pass
         return None
@@ -136,16 +142,14 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(obj.avatar.url)
-        return obj.avatar.url
+            return build_media_url(obj.avatar.url, request)
  
     def get_banner(self, obj):
         if not obj.banner:
             return None
         request = self.context.get("request")
         if request:
-            return request.build_absolute_uri(obj.banner.url)
-        return obj.banner.url
+            return build_media_url(obj.banner.url, request)
  
     def get_build_count(self, obj):
         return Build.objects.filter(author=obj.user, is_public=True).count()
@@ -226,7 +230,7 @@ class BuildSerializer(serializers.ModelSerializer):
         for img in obj.images.all():
             url = img.image.url if img.image else None
             if url and request:
-                url = request.build_absolute_uri(url)
+                url = build_media_url(url, request)
             result.append({"id": img.id, "image": url, "is_cover": img.is_cover})
         return result
 
@@ -444,7 +448,7 @@ class TicketReplySerializer(serializers.ModelSerializer):
             request = self.context.get('request')
             avatar = obj.author.profile.avatar
             if avatar and request:
-                return request.build_absolute_uri(avatar.url)
+                return build_media_url(avatar.url, request)
         except Exception:
             pass
         return None
@@ -453,7 +457,7 @@ class TicketReplySerializer(serializers.ModelSerializer):
         try:
             request = self.context.get('request')
             if obj.image and request:
-                return request.build_absolute_uri(obj.image.url)
+                return build_media_url(obj.image.url, request)
         except Exception:
             pass
         return None
@@ -516,7 +520,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
             request = self.context.get("request")
             avatar = obj.profile.avatar
             if avatar and request:
-                return request.build_absolute_uri(avatar.url)
+                return build_media_url(avatar.url, request)
         except Exception:
             pass
         return None

@@ -25,7 +25,13 @@ const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('vortex_to
 const POLL_MS = 3000;
 
 export default function Dashboard({ onLogout, dark, setDark }) {
-  const [activeNav, setActiveNav] = useState('catalog');
+  const [activeNav, setActiveNav] = useState(
+    localStorage.getItem('vortex_active_nav') || 'catalog'
+  );
+  useEffect(() => {
+  localStorage.setItem('vortex_active_nav', activeNav);
+}, [activeNav]);
+
   const [navExtra, setNavExtra] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userRole, setUserRole] = useState('user');

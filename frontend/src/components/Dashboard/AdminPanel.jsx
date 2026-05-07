@@ -1317,7 +1317,14 @@ const UsersTab = ({ dark, currentRole, addToast }) => {
  
 
 const AdminPanel = ({ dark, currentRole, addToast, removeToast }) => {
-  const [tab, setTab] = useState('submissions');
+  const [tab, setTab] = useState(
+    localStorage.getItem('vortex_admin_tab') || 'submissions'
+  );
+
+  useEffect(() => {
+    localStorage.setItem('vortex_admin_tab', tab);
+  }, [tab]);
+
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
