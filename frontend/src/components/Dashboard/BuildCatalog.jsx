@@ -5,7 +5,7 @@ import {
   Loader, Bot, X, SlidersHorizontal, Flame,
   Plus, Upload, AlertCircle,
   Cpu, FileText, Layers, MessageSquare, ThumbsUp, Code, ImageIcon, File,
-  Edit3
+  Edit3, DollarSign
 } from 'lucide-react';
 import './styles/BuildCatalog.css';
 import { UserLink } from '../UserHoverCard';
@@ -557,6 +557,14 @@ const BuildDetailPanel = ({ build, dark, onClose, onInstall, onAnalyze, analyzin
         </div>
         <div className="bdp__hactions">
           <InstallButton build={build} onInstall={onInstall} />
+          <button
+            className={`bdp__btn-icon ${theme}`}
+            title="Підтримати автора"
+            onClick={() => {}}
+            style={{ color: '#1B9c85', borderColor: 'rgba(27,156,133,0.25)', background: 'rgba(27,156,133,0.08)' }}
+          >
+            <DollarSign size={14} />
+          </button>
           <button className={`bdp__btn-icon bdp__btn-icon--ai ${theme}`}
             onClick={() => { onAnalyze(build); onClose(); }}>
             <Bot size={14} />
@@ -1342,9 +1350,10 @@ const FeaturedSection = ({ dark, onInstall, onAnalyze, analyzingId, onSelect, se
 const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProfile, onUpsell}) => {
   const [builds, setBuilds] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(localStorage.getItem('vortex_search_query') || '');
   const [aiSearching, setAiSearching] = useState(false);
   const [creditsLeft, setCreditsLeft] = useState(null);
+  const [useAiSearch, setUseAiSearch] = useState(() => localStorage.getItem('vortex_search_mode') !== 'simple');
   const [activeType, setActiveType] = useState(
     localStorage.getItem('vortex_filter_type') || 'all'
   );
@@ -1358,6 +1367,14 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
   useEffect(() => {
     localStorage.setItem('vortex_filter_tag', activeTag);
   }, [activeTag]);
+
+  useEffect(() => {
+    localStorage.setItem('vortex_search_query', searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    localStorage.setItem('vortex_search_mode', useAiSearch ? 'ai' : 'simple');
+  }, [useAiSearch]);
   const [allTags, setAllTags] = useState([]);
   const [installBuild, setInstallBuild] = useState(null);
   const handleInstall = useCallback((build) => {
@@ -1416,6 +1433,28 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) { fetchBuilds(activeType, activeTag); return; }
+
+    if (!useAiSearch) {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (activeType === 'favorites') params.set('favorites', '1');
+        else if (activeType !== 'all' && activeType !== 'rating') params.set('type', activeType);
+        if (activeTag) params.set('tag', activeTag);
+        const res = await axios.get(`${API}/builds/?${params}`, { headers: getToken() ? auth() : {} });
+        const q = searchQuery.trim().toLowerCase();
+        const filtered = res.data.filter(b =>
+          b.title?.toLowerCase().includes(q) ||
+          b.description?.toLowerCase().includes(q) ||
+          b.tags?.toLowerCase().includes(q)
+        );
+        setBuilds(filtered);
+        setCreditsLeft(null);
+      } catch {}
+      finally { setLoading(false); }
+      return;
+    }
+
     setAiSearching(true);
     try {
       const res = await axios.get(`${API}/builds/search/?q=${encodeURIComponent(searchQuery)}`, { headers: auth() });
@@ -1478,16 +1517,44 @@ const BuildCatalog = ({ dark, onAnalyzeRequest, specsExist, addToast, onOpenProf
             <div className="bc-search-icon">
               {aiSearching
                 ? <Loader size={15} color="#6c9bcf" className="spin" />
-                : <Bot size={15} color="#6c9bcf" />
+                : useAiSearch
+                  ? <Bot size={15} color="#6c9bcf" />
+                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6c9bcf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               }
             </div>
             <input type="text"
               className="bc-search-input"
-              placeholder='AI-пошук: "збірка для поліції на слабкому ПК"...'
+              placeholder={useAiSearch ? 'AI-пошук: "збірка для поліції на слабкому ПК"...' : 'Пошук за назвою, описом або тегами...'}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               style={{ color: textColor }}
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1px', marginRight: '4px',
+              background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+              borderRadius: '0.4rem', padding: '2px' }}>
+              <button type="button" onClick={() => { setUseAiSearch(false); setCreditsLeft(null); }}
+                title="Звичайний пошук"
+                style={{
+                  padding: '2px 7px', borderRadius: '0.3rem', fontSize: '0.62rem', fontWeight: 600,
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s', lineHeight: 1.4,
+                  background: !useAiSearch ? (dark ? 'rgba(255,255,255,0.15)' : '#fff') : 'transparent',
+                  color: !useAiSearch ? (dark ? '#edeffd' : '#363949') : (dark ? '#a3bdcc' : '#9aa5b4'),
+                  boxShadow: !useAiSearch ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                }}>
+                Звич.
+              </button>
+              <button type="button" onClick={() => setUseAiSearch(true)}
+                title="ШІ-пошук"
+                style={{
+                  padding: '2px 7px', borderRadius: '0.3rem', fontSize: '0.62rem', fontWeight: 600,
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.4,
+                  background: useAiSearch ? 'rgba(108,155,207,0.25)' : 'transparent',
+                  color: useAiSearch ? '#6c9bcf' : (dark ? '#a3bdcc' : '#9aa5b4'),
+                  boxShadow: useAiSearch ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                }}>
+                <Bot size={9} /> ШІ
+              </button>
+            </div>
             {searchQuery && (
               <button type="button" className={`bc-search-clear ${theme}`}
                 onClick={() => { setSearchQuery(''); fetchBuilds(activeType, activeTag); setCreditsLeft(null); }}>

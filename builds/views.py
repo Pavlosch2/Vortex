@@ -897,7 +897,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             build_type=sub.build_type,
             tags=sub.tags,
             video_url=sub.video_url or "",
-            author=request.user,
+            author=sub.submitted_by,
             source_file=sub.source_file,
             is_public=True,
         )

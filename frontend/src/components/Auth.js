@@ -241,7 +241,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
 
           <div className="info-text login">
             <h2 className="animation" style={{'--i':0,'--j':20}}>VORTEX</h2>
-            <p className="animation" style={{'--i':1,'--j':21}}>Твій ШІ-асистент.</p>
+            <p className="animation" style={{'--i':1,'--j':21}}>Встановлюй перевірений продукт.</p>
           </div>
           <div className="info-text register">
             <h2 className="animation" style={{'--i':17,'--j':0}}>JOIN US</h2>

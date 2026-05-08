@@ -325,7 +325,10 @@ export default function PCSpecsForm({ dark, onSaved }) {
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.2rem', alignItems: 'center' }}>
         {specs.map(s => (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0', position: 'relative' }}
+            onMouseEnter={e => { const btn = e.currentTarget.querySelector('.tab-delete'); if (btn) btn.style.opacity = '1'; }}
+            onMouseLeave={e => { const btn = e.currentTarget.querySelector('.tab-delete'); if (btn && activeId !== s.id) btn.style.opacity = '0'; }}
+          >
             {renamingId === s.id ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <input
@@ -352,6 +355,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
                   background: activeId === s.id ? tabActiveBg : tabBg,
                   color: activeId === s.id ? '#6c9bcf' : subColor,
                   display: 'flex', alignItems: 'center', gap: '0.35rem',
+                  paddingRight: specs.length > 1 ? '0.5rem' : '0.85rem',
                 }}
               >
                 {s.label || s.pc_name || 'Пристрій'}
@@ -360,6 +364,22 @@ export default function PCSpecsForm({ dark, onSaved }) {
                     <Pencil size={11} />
                   </span>
                 )}
+                <span
+                  className="tab-delete"
+                  onClick={e => { e.stopPropagation(); deleteSpec(s.id); }}
+                  style={{
+                    opacity: activeId === s.id ? 0.5 : 0,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    transition: 'opacity 0.15s',
+                    color: '#e05252',
+                    marginLeft: '0.1rem',
+                  }}
+                  title="Видалити вкладку"
+                >
+                  <X size={11} />
+                </span>
               </button>
             )}
           </div>
@@ -397,8 +417,7 @@ export default function PCSpecsForm({ dark, onSaved }) {
               }}>
                 <Pencil size={12} /> Редагувати
               </button>
-              {specs.length > 1 && (
-                <button onClick={() => deleteSpec(activeSpec.id)} style={{
+              <button onClick={() => deleteSpec(activeSpec.id)} style={{
                   padding: '0.35rem 0.7rem', borderRadius: '0.6rem', fontSize: '0.75rem',
                   fontFamily: 'Poppins, sans-serif', cursor: 'pointer',
                   background: 'rgba(224,82,82,0.08)', border: '1px solid rgba(224,82,82,0.2)',
@@ -406,7 +425,6 @@ export default function PCSpecsForm({ dark, onSaved }) {
                 }}>
                   <Trash2 size={12} />
                 </button>
-              )}
             </div>
           </div>
           <SpecsDisplay spec={activeSpec} dark={dark} />
