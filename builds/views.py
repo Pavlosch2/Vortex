@@ -1,4 +1,7 @@
+import logging
 from django.contrib.auth.models import User
+
+logger = logging.getLogger(__name__)
 from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from django.db import models
