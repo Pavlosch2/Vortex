@@ -917,11 +917,13 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         )
 
         def _upload_submission():
+            from django.db import connection
             try:
                 from .archive_utils import upload_submission_to_archive_from_path
                 identifier, archive_url = upload_submission_to_archive_from_path(
                     sub, tmp_path, file_name
                 )
+                connection.ensure_connection()
                 BuildSubmission.objects.filter(pk=sub.pk).update(
                     archive_identifier=identifier,
                     archive_url=archive_url,
@@ -929,9 +931,14 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                 )
                 logger.info(f"[Submission] Завантажено на Archive.org: {archive_url}")
             except Exception as e:
-                BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="failed")
+                try:
+                    connection.ensure_connection()
+                    BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="failed")
+                except Exception:
+                    pass
                 logger.error(f"[Submission] Помилка завантаження: {e}")
             finally:
+                connection.close()
                 if _os.path.exists(tmp_path):
                     _os.unlink(tmp_path)
 
