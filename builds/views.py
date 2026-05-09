@@ -910,13 +910,23 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         )
         if sub.cover_image:
             from django.core.files.base import ContentFile
+            import requests as req_lib
             img_obj = BuildImage(build=build, is_cover=True)
-            with sub.cover_image.open("rb") as src:
-                img_obj.image.save(
-                    os.path.basename(sub.cover_image.name),
-                    ContentFile(src.read()),
-                    save=True,
-                )
+            try:
+                # Спробуємо через .open() (працює якщо B2 ключ має Read права)
+                with sub.cover_image.open("rb") as src:
+                    img_data = src.read()
+            except Exception:
+                # Fallback — завантажити через публічний URL
+                img_url = sub.cover_image.url
+                r = req_lib.get(img_url, timeout=30)
+                r.raise_for_status()
+                img_data = r.content
+            img_obj.image.save(
+                os.path.basename(sub.cover_image.name),
+                ContentFile(img_data),
+                save=True,
+            )
 
         sub.status = "approved"
         sub.reviewed_by = request.user
@@ -1140,7 +1150,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.rejection_reason = reason
         sub.reviewed_by = request.user
         sub.save()
-        notify_submission_status(submission.submitted_by, submission.title, "rejected", submission.id, submission.rejection_reason)
+        notify_submission_status(sub.submitted_by, sub.title, "rejected", sub.id, sub.rejection_reason)
         return Response({"status": "rejected"})
 
 
