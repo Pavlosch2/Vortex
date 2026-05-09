@@ -42,12 +42,11 @@ def upload_to_archive(build):
     }
 
     import tempfile
-    with build.source_file.open("rb") as src:
-        file_data = src.read()
-
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
-        tmp.write(file_data)
         tmp_path = tmp.name
+        with build.source_file.open("rb") as src:
+            for chunk in iter(lambda: src.read(8 * 1024 * 1024), b""):
+                tmp.write(chunk)
 
     try:
         session = _get_ia_session()

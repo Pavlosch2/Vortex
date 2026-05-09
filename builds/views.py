@@ -909,7 +909,14 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             is_public=True,
         )
         if sub.cover_image:
-            BuildImage.objects.create(build=build, image=sub.cover_image, is_cover=True)
+            from django.core.files.base import ContentFile
+            img_obj = BuildImage(build=build, is_cover=True)
+            with sub.cover_image.open("rb") as src:
+                img_obj.image.save(
+                    os.path.basename(sub.cover_image.name),
+                    ContentFile(src.read()),
+                    save=True,
+                )
 
         sub.status = "approved"
         sub.reviewed_by = request.user
