@@ -195,16 +195,13 @@ def upload_submission_to_archive_from_path(submission, tmp_path, file_name):
             retries=3,
             retries_sleep=10,
         )
-        item.modify_metadata(
-            {"dark": "true"},
-            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
-            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
-        )
+        # Не приховуємо одразу — Archive.org ще не проіндексував item
+        # is_public=False контролюється через каталог (build.is_public)
     finally:
         os.environ.update(env_backup)
 
     archive_url = f"https://archive.org/download/{identifier}/{file_name}"
-    logger.info(f"[Archive.org] Заявку завантажено (приховано): {archive_url}")
+    logger.info(f"[Archive.org] Заявку завантажено: {archive_url}")
     return identifier, archive_url
 
 

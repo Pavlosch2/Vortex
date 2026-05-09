@@ -1004,20 +1004,11 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.save()
         notify_submission_status(sub.submitted_by, sub.title, "approved", sub.id)
 
-        # Публікуємо item на Archive.org у фоні
-        import threading
-        def _publish():
-            try:
-                from .archive_utils import publish_submission_archive
-                publish_submission_archive(sub.archive_identifier, sub.title)
-                # Оновлюємо identifier в Build (новий identifier після публікації той самий)
-                Build.objects.filter(pk=build.pk).update(
-                    archive_url=sub.archive_url,
-                    archive_identifier=sub.archive_identifier,
-                )
-            except Exception as e:
-                logger.error(f"[Archive.org] Помилка публікації: {e}")
-        threading.Thread(target=_publish, daemon=True).start()
+        # Archive.org item вже публічний — просто оновлюємо Build
+        Build.objects.filter(pk=build.pk).update(
+            archive_url=sub.archive_url,
+            archive_identifier=sub.archive_identifier,
+        )
 
         return Response(
             {
