@@ -41,21 +41,31 @@ def upload_to_archive(build):
         "mediatype": "software",
     }
 
+    # Спочатку прибираємо B2 credentials щоб boto3 не плутав їх з Archive.org S3
+    env_backup = {}
+    for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+        val = os.environ.pop(key, None)
+        if val is not None:
+            env_backup[key] = val
+
     import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
-        tmp_path = tmp.name
-        with build.source_file.open("rb") as src:
-            for chunk in iter(lambda: src.read(8 * 1024 * 1024), b""):
+    tmp_path = None
+    try:
+        # Читаємо файл через requests по публічному URL (обходимо boto3 повністю)
+        import requests as req_lib
+        file_url = build.source_file.url
+        r = req_lib.get(file_url, stream=True, timeout=60)
+        r.raise_for_status()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
+            tmp_path = tmp.name
+            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
                 tmp.write(chunk)
+    except Exception as e:
+        os.environ.update(env_backup)
+        raise RuntimeError(f"Не вдалося завантажити файл з B2: {e}")
 
     try:
-        # Ізолюємо boto3 від B2 credentials щоб internetarchive не плутав їх зі своїм S3
-        env_backup = {}
-        for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
-                    "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
-            val = os.environ.pop(key, None)
-            if val is not None:
-                env_backup[key] = val
         try:
             session = _get_ia_session()
             item = session.get_item(identifier)
@@ -71,7 +81,8 @@ def upload_to_archive(build):
         finally:
             os.environ.update(env_backup)
     finally:
-        if os.path.exists(tmp_path):
+        os.environ.update(env_backup)
+        if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
     archive_url = f"https://archive.org/download/{identifier}/{file_name}"

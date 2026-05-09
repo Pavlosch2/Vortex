@@ -24,13 +24,16 @@ def generate_torrent(instance):
     pieces = []
     file_size = 0
 
-    with instance.source_file.open("rb") as f:
-        while True:
-            data = f.read(piece_length)
-            if not data:
-                break
-            file_size += len(data)
-            pieces.append(hashlib.sha1(data, usedforsecurity=False).digest())
+    # Читаємо через публічний URL щоб обійти boto3/B2 обмеження
+    import requests as req_lib
+    file_url = instance.source_file.url
+    r = req_lib.get(file_url, stream=True, timeout=60)
+    r.raise_for_status()
+    for data in r.iter_content(chunk_size=piece_length):
+        if not data:
+            break
+        file_size += len(data)
+        pieces.append(hashlib.sha1(data, usedforsecurity=False).digest())
 
     info = {
         b"name": file_name.encode(),
