@@ -911,22 +911,30 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         if sub.cover_image:
             from django.core.files.base import ContentFile
             import requests as req_lib
-            img_obj = BuildImage(build=build, is_cover=True)
             try:
-                # Спробуємо через .open() (працює якщо B2 ключ має Read права)
-                with sub.cover_image.open("rb") as src:
-                    img_data = src.read()
-            except Exception:
-                # Fallback — завантажити через публічний URL
-                img_url = sub.cover_image.url
-                r = req_lib.get(img_url, timeout=30)
-                r.raise_for_status()
-                img_data = r.content
-            img_obj.image.save(
-                os.path.basename(sub.cover_image.name),
-                ContentFile(img_data),
-                save=True,
-            )
+                img_data = None
+                try:
+                    with sub.cover_image.open("rb") as src:
+                        img_data = src.read()
+                except Exception:
+                    try:
+                        img_url = sub.cover_image.url
+                        r = req_lib.get(img_url, timeout=30)
+                        if r.status_code == 200:
+                            img_data = r.content
+                    except Exception:
+                        pass
+                if img_data:
+                    img_obj = BuildImage(build=build, is_cover=True)
+                    img_obj.image.save(
+                        os.path.basename(sub.cover_image.name),
+                        ContentFile(img_data),
+                        save=True,
+                    )
+                else:
+                    logger.warning(f"[Approve] Не вдалося скопіювати обкладинку для submission {sub.id}")
+            except Exception as img_err:
+                logger.warning(f"[Approve] Помилка обкладинки: {img_err}")
 
         sub.status = "approved"
         sub.reviewed_by = request.user
