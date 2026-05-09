@@ -49,51 +49,73 @@ def upload_to_archive(build):
                 tmp.write(chunk)
 
     try:
-        session = _get_ia_session()
-        item = session.get_item(identifier)
-        item.upload(
-            {file_name: tmp_path},
-            metadata=metadata,
-            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
-            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
-            verbose=True,
-            retries=3,
-            retries_sleep=10,
-        )
+        # Ізолюємо boto3 від B2 credentials щоб internetarchive не плутав їх зі своїм S3
+        env_backup = {}
+        for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                    "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+            val = os.environ.pop(key, None)
+            if val is not None:
+                env_backup[key] = val
+        try:
+            session = _get_ia_session()
+            item = session.get_item(identifier)
+            item.upload(
+                {file_name: tmp_path},
+                metadata=metadata,
+                access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+                secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+                verbose=True,
+                retries=3,
+                retries_sleep=10,
+            )
+        finally:
+            os.environ.update(env_backup)
     finally:
-        os.unlink(tmp_path)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     archive_url = f"https://archive.org/download/{identifier}/{file_name}"
     logger.info(f"[Archive.org] Завантажено: {archive_url}")
     return archive_url, identifier
 
 
-def hide_from_archive(identifier):
+def delete_from_archive(identifier):
+    """Видаляє item з Archive.org повністю."""
     try:
-        session = _get_ia_session()
-        item = session.get_item(identifier)
-
-        item.modify_metadata(
-            {"dark": "true"},
-            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
-            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
-        )
-        logger.info(f"[Archive.org] Приховано: {identifier}")
-
+        import internetarchive as ia
+        env_backup = {}
+        for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                    "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+            val = os.environ.pop(key, None)
+            if val is not None:
+                env_backup[key] = val
         try:
-            item.delete(
-                cascade_delete=True,
-                access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
-                secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
-            )
-            logger.info(f"[Archive.org] Запит на видалення відправлено: {identifier}")
-        except Exception as del_err:
-            logger.warning(
-                f"[Archive.org] Приховано але не видалено {identifier}: {del_err}"
-            )
-
+            session = _get_ia_session()
+            item = session.get_item(identifier)
+            if not item.exists:
+                logger.info(f"[Archive.org] Item не існує, нічого видаляти: {identifier}")
+                return
+            # Видаляємо всі файли item через S3 API
+            files = list(item.get_files())
+            for f in files:
+                try:
+                    ia.delete(identifier, files=f.name,
+                              access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+                              secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+                              cascade_delete=True)
+                    logger.info(f"[Archive.org] Видалено файл: {f.name}")
+                except Exception as fe:
+                    logger.warning(f"[Archive.org] Не вдалося видалити файл {f.name}: {fe}")
+        finally:
+            os.environ.update(env_backup)
+        logger.info(f"[Archive.org] Item видалено: {identifier}")
     except Exception as e:
-        logger.error(f"[Archive.org] Помилка приховування {identifier}: {e}")
+        logger.error(f"[Archive.org] Помилка видалення {identifier}: {e}")
+
+
+def hide_from_archive(identifier):
+    """Залишено для сумісності — тепер просто видаляє."""
+    delete_from_archive(identifier)
 
 
 def unhide_from_archive(identifier):

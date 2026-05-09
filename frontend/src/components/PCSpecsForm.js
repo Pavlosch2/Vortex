@@ -44,7 +44,7 @@ const SpecsDisplay = ({ spec, dark }) => (
   </div>
 );
 
-const SpecForm = ({ dark, initial, onSave, onCancel, saving, mode }) => { // Додано mode у пропси
+const SpecForm = ({ dark, initial, onSave, onCancel, saving, mode }) => {
   const storageKey = `vortex_draft_${mode}_${initial.id || 'new'}`;
   
   const [form, setForm] = useState(() => {
@@ -56,13 +56,11 @@ const SpecForm = ({ dark, initial, onSave, onCancel, saving, mode }) => { // Д�
     localStorage.setItem(storageKey, JSON.stringify(form));
   }, [form, storageKey]);
 
-  // Цю функцію тепер використовуємо в onClick кнопки "Зберегти"
   const handleSave = () => {
     localStorage.removeItem(storageKey);
     onSave(form);
   };
 
-  // Цю функцію використовуємо в onClick кнопки "Скасувати"
   const handleCancel = () => {
     localStorage.removeItem(storageKey);
     onCancel();

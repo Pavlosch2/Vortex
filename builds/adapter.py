@@ -1,23 +1,41 @@
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from allauth.exceptions import ImmediateHttpResponse
+from django.shortcuts import redirect
+import os
 import re
+
 
 class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_auto_signup_allowed(self, request, sociallogin):
         return True
-    
+
     def is_signup_required(self, request, sociallogin):
         return False
 
     def pre_social_login(self, request, sociallogin):
+        from django.contrib.auth.models import User
+        from rest_framework_simplejwt.tokens import RefreshToken
+
         if sociallogin.is_existing:
             return
+
+        email = sociallogin.account.extra_data.get('email', '')
+        if email:
+            try:
+                existing_user = User.objects.get(email=email)
+                sociallogin.connect(request, existing_user)
+                token = str(RefreshToken.for_user(existing_user).access_token)
+                frontend = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+                raise ImmediateHttpResponse(redirect(f"{frontend}?token={token}"))
+            except User.DoesNotExist:
+                pass
+
         if not sociallogin.user.username:
-            email = sociallogin.account.extra_data.get('email', '')
             base = re.sub(r'[^a-zA-Z0-9]', '', email.split('@')[0])[:20] or 'user'
-            from django.contrib.auth.models import User
+            from django.contrib.auth.models import User as U
             username = base
             counter = 1
-            while User.objects.filter(username=username).exists():
+            while U.objects.filter(username=username).exists():
                 username = f"{base}{counter}"
                 counter += 1
             sociallogin.user.username = username
