@@ -18,18 +18,18 @@ def generate_torrent(instance):
     Генерація .torrent файлу та magnet-посилання на основі завантаженого source_file.
     Повертає: (torrent_filename, info_hash_hex, magnet_link)
     """
-    file_path = instance.source_file.path
-    file_name = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
+    file_name = os.path.basename(instance.source_file.name)
 
     piece_length = 512 * 1024
     pieces = []
+    file_size = 0
 
-    with open(file_path, "rb") as f:
+    with instance.source_file.open("rb") as f:
         while True:
             data = f.read(piece_length)
             if not data:
                 break
+            file_size += len(data)
             pieces.append(hashlib.sha1(data, usedforsecurity=False).digest())
 
     info = {

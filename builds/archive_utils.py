@@ -30,8 +30,7 @@ def upload_to_archive(build):
         raise RuntimeError("У збірки немає source_file")
 
     identifier = _make_identifier(build)
-    file_path = build.source_file.path
-    file_name = os.path.basename(file_path)
+    file_name = os.path.basename(build.source_file.name)
 
     metadata = {
         "title": f"{build.title} — Vortex Arizona RP",
@@ -42,17 +41,28 @@ def upload_to_archive(build):
         "mediatype": "software",
     }
 
-    session = _get_ia_session()
-    item = session.get_item(identifier)
-    item.upload(
-        file_path,
-        metadata=metadata,
-        access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
-        secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
-        verbose=True,
-        retries=3,
-        retries_sleep=10,
-    )
+    import tempfile
+    with build.source_file.open("rb") as src:
+        file_data = src.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
+        tmp.write(file_data)
+        tmp_path = tmp.name
+
+    try:
+        session = _get_ia_session()
+        item = session.get_item(identifier)
+        item.upload(
+            {file_name: tmp_path},
+            metadata=metadata,
+            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+            verbose=True,
+            retries=3,
+            retries_sleep=10,
+        )
+    finally:
+        os.unlink(tmp_path)
 
     archive_url = f"https://archive.org/download/{identifier}/{file_name}"
     logger.info(f"[Archive.org] Завантажено: {archive_url}")

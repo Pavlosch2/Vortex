@@ -399,34 +399,33 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         import zipfile
 
         build = self.get_object()
-        if not build.source_file:
+        if not build.source_file and not build.archive_url:
             return Response({"error": "До збірки не прикріплено архів"}, status=400)
-        archive_path = build.source_file.path
-        if not os.path.exists(archive_path):
+
+        import tempfile, requests as req_lib
+        archive_path = None
+        try:
             if build.archive_url:
-                import tempfile
-
-                import requests
-
-                try:
-                    r = requests.get(build.archive_url, stream=True, timeout=30)
-                    r.raise_for_status()
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-                    for chunk in r.iter_content(chunk_size=8192):
+                r = req_lib.get(build.archive_url, stream=True, timeout=30)
+                r.raise_for_status()
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+                for chunk in r.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+                tmp.close()
+                archive_path = tmp.name
+                archive_ext = ".zip"
+            elif build.source_file:
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(build.source_file.name)[1])
+                with build.source_file.open("rb") as src:
+                    for chunk in iter(lambda: src.read(8192), b""):
                         tmp.write(chunk)
-                    tmp.close()
-                    archive_path = tmp.name
-                    archive_ext = ".zip"
-                except Exception as e:
-                    return Response(
-                        {"error": f"Не вдалося завантажити з Archive.org: {e}"},
-                        status=400,
-                    )
+                tmp.close()
+                archive_path = tmp.name
+                archive_ext = os.path.splitext(archive_path)[1].lower()
             else:
-                return Response(
-                    {"error": f"Файл не знайдено: {archive_path}"}, status=400
-                )
-        archive_ext = os.path.splitext(archive_path)[1].lower()
+                return Response({"error": "Файл не знайдено"}, status=400)
+        except Exception as e:
+            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
 
         folder = request.query_params.get("folder", "")
         try:
@@ -526,17 +525,24 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
         offset = (page - 1) * page_size
         files_page = files_list[offset : offset + page_size]
 
-        return Response(
-            {
-                "folder": folder,
-                "total_files": len(all_entries),
-                "total_in_folder": total_files_in_folder,
-                "page": page,
-                "page_size": page_size,
-                "has_more": (offset + page_size) < total_files_in_folder,
-                "items": dirs_list + files_page,
-            }
-        )
+        try:
+            return Response(
+                {
+                    "folder": folder,
+                    "total_files": len(all_entries),
+                    "total_in_folder": total_files_in_folder,
+                    "page": page,
+                    "page_size": page_size,
+                    "has_more": (offset + page_size) < total_files_in_folder,
+                    "items": dirs_list + files_page,
+                }
+            )
+        finally:
+            if archive_path and os.path.exists(archive_path):
+                try:
+                    os.unlink(archive_path)
+                except Exception:
+                    pass
 
     @action(detail=True, methods=["get"], url_path="files/read", permission_classes=[])
     def files_read(self, request, pk=None):
@@ -565,27 +571,28 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {"error": "Цей тип файлу не підтримується для перегляду"}, status=400
             )
-        if not build.source_file or not os.path.exists(build.source_file.path):
-            if not build.archive_url:
-                return Response({"error": "Файл не знайдено"}, status=404)
-            import tempfile
-
-            import requests
-
-            try:
-                r = requests.get(build.archive_url, stream=True, timeout=30)
+        import tempfile, requests as req_lib
+        archive_path = None
+        try:
+            if build.archive_url:
+                r = req_lib.get(build.archive_url, stream=True, timeout=30)
                 r.raise_for_status()
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
                 for chunk in r.iter_content(chunk_size=8192):
                     tmp.write(chunk)
                 tmp.close()
                 archive_path = tmp.name
-            except Exception as e:
-                return Response(
-                    {"error": f"Не вдалося завантажити з Archive.org: {e}"}, status=400
-                )
-        else:
-            archive_path = build.source_file.path
+            elif build.source_file:
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(build.source_file.name)[1])
+                with build.source_file.open("rb") as src:
+                    for chunk in iter(lambda: src.read(8192), b""):
+                        tmp.write(chunk)
+                tmp.close()
+                archive_path = tmp.name
+            else:
+                return Response({"error": "Файл не знайдено"}, status=404)
+        except Exception as e:
+            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
         archive_ext = os.path.splitext(archive_path)[1].lower()
 
         def decode(data):
@@ -928,18 +935,6 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                 )
                 logger.info(f"[Archive.org] Завантажено: {archive_url}")
 
-                for file_obj in [build.source_file, sub.source_file]:
-                    try:
-                        if file_obj and file_obj.name:
-                            path = file_obj.path
-                            if os.path.exists(path):
-                                os.remove(path)
-                                logger.info(f"[Cleanup] Видалено: {path}")
-                    except Exception as cleanup_err:
-                        logger.warning(
-                            f"[Cleanup] Не вдалося видалити файл: {cleanup_err}"
-                        )
-
             except Exception as e:
                 import logging
 
@@ -967,9 +962,16 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub = self.get_object()
         if not sub.source_file:
             return Response({"error": "Файл не знайдено"}, status=400)
-        archive_path = sub.source_file.path
-        if not os.path.exists(archive_path):
-            return Response({"error": f"Файл не знайдено: {archive_path}"}, status=400)
+        import tempfile
+        try:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(sub.source_file.name)[1])
+            with sub.source_file.open("rb") as src:
+                for chunk in iter(lambda: src.read(8192), b""):
+                    tmp.write(chunk)
+            tmp.close()
+            archive_path = tmp.name
+        except Exception as e:
+            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
         archive_ext = os.path.splitext(archive_path)[1].lower()
         folder = request.query_params.get("folder", "")
         try:
@@ -1085,7 +1087,16 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         ext = os.path.splitext(file_path)[1].lower()
         if ext not in READABLE:
             return Response({"error": "Тип файлу не підтримується"}, status=400)
-        archive_path = sub.source_file.path
+        import tempfile
+        try:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(sub.source_file.name)[1])
+            with sub.source_file.open("rb") as src:
+                for chunk in iter(lambda: src.read(8192), b""):
+                    tmp.write(chunk)
+            tmp.close()
+            archive_path = tmp.name
+        except Exception as e:
+            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
         try:
             with zipfile.ZipFile(archive_path, "r") as zf:
                 info = zf.getinfo(file_path)
@@ -1103,6 +1114,12 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             return Response({"error": "Файл не знайдено в архіві"}, status=404)
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+        finally:
+            if archive_path and os.path.exists(archive_path):
+                try:
+                    os.unlink(archive_path)
+                except Exception:
+                    pass
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def reject(self, request, pk=None):
