@@ -158,6 +158,56 @@ def upload_submission_to_archive(submission):
     return identifier, archive_url
 
 
+def upload_submission_to_archive_from_path(submission, tmp_path, file_name):
+    """Завантажує заявку на Archive.org з локального tmp файлу (обходить B2 повністю)."""
+    try:
+        import internetarchive as ia
+    except ImportError:
+        raise RuntimeError("Встановіть: pip install internetarchive")
+
+    slug = re.sub(r"[^a-z0-9]+", "-", submission.title.lower()).strip("-")[:40]
+    identifier = f"Vortex-submission-{submission.id}-{slug}"
+
+    metadata = {
+        "title": f"[PENDING] {submission.title} — Vortex Arizona RP",
+        "description": submission.description or f"Заявка: {submission.title}",
+        "subject": ["Arizona RP", "GTA SA", "Vortex", submission.build_type],
+        "creator": "Vortex",
+        "mediatype": "software",
+        "access-restricted-item": "true",
+    }
+
+    env_backup = {}
+    for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+        val = os.environ.pop(key, None)
+        if val is not None:
+            env_backup[key] = val
+    try:
+        session = _get_ia_session()
+        item = session.get_item(identifier)
+        item.upload(
+            {file_name: tmp_path},
+            metadata=metadata,
+            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+            verbose=True,
+            retries=3,
+            retries_sleep=10,
+        )
+        item.modify_metadata(
+            {"dark": "true"},
+            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+        )
+    finally:
+        os.environ.update(env_backup)
+
+    archive_url = f"https://archive.org/download/{identifier}/{file_name}"
+    logger.info(f"[Archive.org] Заявку завантажено (приховано): {archive_url}")
+    return identifier, archive_url
+
+
 def publish_submission_archive(identifier, build_title):
     """Робить item на Archive.org публічним після схвалення."""
     try:

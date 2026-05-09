@@ -872,40 +872,72 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             return BuildSubmission.objects.select_related("submitted_by").all()
         return BuildSubmission.objects.filter(submitted_by=self.request.user)
 
-    def perform_create(self, serializer):
-        user = self.request.user
+    def create(self, request, *args, **kwargs):
+        import threading, tempfile, os as _os
+        user = request.user
         is_premium = getattr(user, 'profile', None) and user.profile.is_premium
         if not is_premium:
             active_count = BuildSubmission.objects.filter(
-                submitted_by=user,
-                status="pending"
+                submitted_by=user, status="pending"
             ).count()
             if active_count >= 1:
-                from rest_framework.exceptions import ValidationError
-                raise ValidationError(
-                    "Безкоштовні акаунти можуть мати лише 1 активну заявку. "
-                    "Оформіть преміум для необмеженої кількості заявок."
+                return Response(
+                    {"error": "Безкоштовні акаунти можуть мати лише 1 активну заявку. "
+                               "Оформіть преміум для необмеженої кількості заявок."},
+                    status=400,
                 )
-        sub = serializer.save(submitted_by=user, upload_status="pending")
 
-        import threading
+        # Читаємо файл з request.FILES ДО збереження в B2
+        source_file_obj = request.FILES.get("source_file")
+        if not source_file_obj:
+            return Response({"error": "source_file є обов'язковим"}, status=400)
+
+        file_name = source_file_obj.name
+        suffix = _os.path.splitext(file_name)[1]
+
+        # Зберігаємо у тимчасовий файл на диску Railway
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        try:
+            for chunk in source_file_obj.chunks():
+                tmp.write(chunk)
+            tmp.close()
+            tmp_path = tmp.name
+        except Exception as e:
+            tmp.close()
+            _os.unlink(tmp.name)
+            return Response({"error": f"Помилка читання файлу: {e}"}, status=500)
+
+        # Зберігаємо заявку БЕЗ source_file (не йде в B2)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sub = serializer.save(
+            submitted_by=user,
+            upload_status="uploading",
+            source_file=None,
+        )
+
         def _upload_submission():
-            
             try:
-                from .archive_utils import upload_submission_to_archive
-                BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="uploading")
-                identifier, archive_url = upload_submission_to_archive(sub)
+                from .archive_utils import upload_submission_to_archive_from_path
+                identifier, archive_url = upload_submission_to_archive_from_path(
+                    sub, tmp_path, file_name
+                )
                 BuildSubmission.objects.filter(pk=sub.pk).update(
                     archive_identifier=identifier,
                     archive_url=archive_url,
                     upload_status="done",
-                    source_file=None,
                 )
                 logger.info(f"[Submission] Завантажено на Archive.org: {archive_url}")
             except Exception as e:
                 BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="failed")
                 logger.error(f"[Submission] Помилка завантаження: {e}")
+            finally:
+                if _os.path.exists(tmp_path):
+                    _os.unlink(tmp_path)
+
         threading.Thread(target=_upload_submission, daemon=True).start()
+
+        return Response(serializer.data, status=201)
 
     def destroy(self, request, *args, **kwargs):
         if not is_staff(request.user):
