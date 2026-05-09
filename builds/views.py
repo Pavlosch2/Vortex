@@ -1,7 +1,4 @@
-import logging
 from django.contrib.auth.models import User
-
-logger = logging.getLogger(__name__)
 from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from django.db import models
@@ -64,6 +61,9 @@ from .notify import (
     notify_ai_done,
     notify_submission_status,
 )
+
+import logging
+logger = logging.getLogger(__name__)
 
 def get_role(user):
     try:
@@ -886,7 +886,26 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                     "Безкоштовні акаунти можуть мати лише 1 активну заявку. "
                     "Оформіть преміум для необмеженої кількості заявок."
                 )
-        serializer.save(submitted_by=user)
+        sub = serializer.save(submitted_by=user, upload_status="pending")
+
+        import threading
+        def _upload_submission():
+            
+            try:
+                from .archive_utils import upload_submission_to_archive
+                BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="uploading")
+                identifier, archive_url = upload_submission_to_archive(sub)
+                BuildSubmission.objects.filter(pk=sub.pk).update(
+                    archive_identifier=identifier,
+                    archive_url=archive_url,
+                    upload_status="done",
+                    source_file=None,
+                )
+                logger.info(f"[Submission] Завантажено на Archive.org: {archive_url}")
+            except Exception as e:
+                BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="failed")
+                logger.error(f"[Submission] Помилка завантаження: {e}")
+        threading.Thread(target=_upload_submission, daemon=True).start()
 
     def destroy(self, request, *args, **kwargs):
         if not is_staff(request.user):
@@ -901,6 +920,12 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         if sub.status != "pending":
             return Response({"error": "Заявка вже оброблена"}, status=400)
 
+        if sub.upload_status != "done" or not sub.archive_url:
+            return Response(
+                {"error": "Файл ще завантажується на Archive.org. Зачекайте і спробуйте знову."},
+                status=400,
+            )
+
         build = Build.objects.create(
             title=sub.title,
             description=sub.description,
@@ -908,9 +933,12 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             tags=sub.tags,
             video_url=sub.video_url or "",
             author=sub.submitted_by,
-            source_file=sub.source_file,
+            source_file="",
+            archive_url=sub.archive_url,
+            archive_identifier=sub.archive_identifier,
             is_public=True,
         )
+
         if sub.cover_image:
             from django.core.files.base import ContentFile
             import requests as req_lib
@@ -921,8 +949,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                         img_data = src.read()
                 except Exception:
                     try:
-                        img_url = sub.cover_image.url
-                        r = req_lib.get(img_url, timeout=30)
+                        r = req_lib.get(sub.cover_image.url, timeout=30)
                         if r.status_code == 200:
                             img_data = r.content
                     except Exception:
@@ -945,38 +972,26 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.save()
         notify_submission_status(sub.submitted_by, sub.title, "approved", sub.id)
 
+        # Публікуємо item на Archive.org у фоні
         import threading
-
-        def _upload_to_archive():
+        def _publish():
             try:
-                import logging
-                import os
-
-                from .archive_utils import upload_to_archive
-
-                logger = logging.getLogger(__name__)
-
-                archive_url, identifier = upload_to_archive(build)
+                from .archive_utils import publish_submission_archive
+                publish_submission_archive(sub.archive_identifier, sub.title)
+                # Оновлюємо identifier в Build (новий identifier після публікації той самий)
                 Build.objects.filter(pk=build.pk).update(
-                    archive_url=archive_url,
-                    archive_identifier=identifier,
+                    archive_url=sub.archive_url,
+                    archive_identifier=sub.archive_identifier,
                 )
-                logger.info(f"[Archive.org] Завантажено: {archive_url}")
-
             except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).error(
-                    f"[Archive.org] Помилка завантаження: {e}"
-                )
-
-        threading.Thread(target=_upload_to_archive, daemon=True).start()
+                logger.error(f"[Archive.org] Помилка публікації: {e}")
+        threading.Thread(target=_publish, daemon=True).start()
 
         return Response(
             {
                 "status": "approved",
                 "build_id": build.id,
-                "archive_url": build.archive_url,
+                "archive_url": sub.archive_url,
             }
         )
 
@@ -1162,6 +1177,18 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         sub.reviewed_by = request.user
         sub.save()
         notify_submission_status(sub.submitted_by, sub.title, "rejected", sub.id, sub.rejection_reason)
+
+        # Видаляємо з Archive.org у фоні якщо вже завантажено
+        if sub.archive_identifier:
+            import threading
+            def _delete():
+                try:
+                    from .archive_utils import delete_from_archive
+                    delete_from_archive(sub.archive_identifier)
+                except Exception as e:
+                    logger.error(f"[Archive.org] Помилка видалення при відхиленні: {e}")
+            threading.Thread(target=_delete, daemon=True).start()
+
         return Response({"status": "rejected"})
 
 

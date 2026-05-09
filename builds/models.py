@@ -185,11 +185,22 @@ class BuildSubmission(models.Model):
     )
     video_url = models.URLField(blank=True, null=True, verbose_name="YouTube посилання")
     source_file = models.FileField(
-        upload_to="submission_archives/", verbose_name="Архів збірки"
+        upload_to="submission_archives/", verbose_name="Архів збірки",
+        null=True, blank=True,
     )
     cover_image = models.ImageField(
         upload_to="submission_covers/", null=True, blank=True, verbose_name="Обкладинка"
     )
+    # Archive.org поля — заповнюються після завантаження у фоні
+    archive_identifier = models.CharField(max_length=255, blank=True, null=True, verbose_name="Archive.org ID")
+    archive_url = models.URLField(blank=True, null=True, verbose_name="Archive.org URL")
+    UPLOAD_STATUS_CHOICES = [
+        ("pending", "Очікує завантаження"),
+        ("uploading", "Завантажується"),
+        ("done", "Завантажено"),
+        ("failed", "Помилка"),
+    ]
+    upload_status = models.CharField(max_length=10, choices=UPLOAD_STATUS_CHOICES, default="pending", verbose_name="Статус завантаження")
 
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default="pending", verbose_name="Статус"

@@ -90,6 +90,98 @@ def upload_to_archive(build):
     return archive_url, identifier
 
 
+def upload_submission_to_archive(submission):
+    """Завантажує заявку на Archive.org як приховану. Повертає (identifier, archive_url)."""
+    try:
+        import internetarchive as ia
+    except ImportError:
+        raise RuntimeError("Встановіть: pip install internetarchive")
+
+    if not submission.source_file:
+        raise RuntimeError("У заявки немає source_file")
+
+    slug = re.sub(r"[^a-z0-9]+", "-", submission.title.lower()).strip("-")[:40]
+    identifier = f"Vortex-submission-{submission.id}-{slug}"
+    file_name = os.path.basename(submission.source_file.name)
+
+    metadata = {
+        "title": f"[PENDING] {submission.title} — Vortex Arizona RP",
+        "description": submission.description or f"Заявка на публікацію: {submission.title}",
+        "subject": ["Arizona RP", "GTA SA", "Vortex", submission.build_type],
+        "creator": "Vortex",
+        "mediatype": "software",
+        "access-restricted-item": "true",
+    }
+
+    env_backup = {}
+    for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+        val = os.environ.pop(key, None)
+        if val is not None:
+            env_backup[key] = val
+
+    import tempfile, requests as req_lib
+    tmp_path = None
+    try:
+        file_url = submission.source_file.url
+        r = req_lib.get(file_url, stream=True, timeout=60)
+        r.raise_for_status()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
+            tmp_path = tmp.name
+            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                tmp.write(chunk)
+
+        session = _get_ia_session()
+        item = session.get_item(identifier)
+        item.upload(
+            {file_name: tmp_path},
+            metadata=metadata,
+            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+            verbose=True,
+            retries=3,
+            retries_sleep=10,
+        )
+        # Приховуємо item
+        item.modify_metadata(
+            {"dark": "true"},
+            access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+            secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+        )
+    finally:
+        os.environ.update(env_backup)
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    archive_url = f"https://archive.org/download/{identifier}/{file_name}"
+    logger.info(f"[Archive.org] Заявку завантажено (приховано): {archive_url}")
+    return identifier, archive_url
+
+
+def publish_submission_archive(identifier, build_title):
+    """Робить item на Archive.org публічним після схвалення."""
+    try:
+        env_backup = {}
+        for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME",
+                    "AWS_S3_ENDPOINT_URL", "AWS_S3_CUSTOM_DOMAIN"):
+            val = os.environ.pop(key, None)
+            if val is not None:
+                env_backup[key] = val
+        try:
+            session = _get_ia_session()
+            item = session.get_item(identifier)
+            item.modify_metadata(
+                {"dark": "false", "title": f"{build_title} — Vortex Arizona RP"},
+                access_key=os.getenv("ARCHIVE_ACCESS_KEY"),
+                secret_key=os.getenv("ARCHIVE_SECRET_KEY"),
+            )
+            logger.info(f"[Archive.org] Опубліковано: {identifier}")
+        finally:
+            os.environ.update(env_backup)
+    except Exception as e:
+        logger.error(f"[Archive.org] Помилка публікації {identifier}: {e}")
+
+
 def delete_from_archive(identifier):
     """Видаляє item з Archive.org повністю."""
     try:

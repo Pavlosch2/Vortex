@@ -370,12 +370,14 @@ class BuildSubmissionSerializer(serializers.ModelSerializer):
             "source_file",
             "cover_image",
             "status",
+            "upload_status",
+            "archive_url",
             "rejection_reason",
             "published_build_id",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["status", "rejection_reason", "published_build_id"]
+        read_only_fields = ["status", "upload_status", "archive_url", "rejection_reason", "published_build_id"]
 
 
 class AnalysisTaskSerializer(serializers.ModelSerializer):
