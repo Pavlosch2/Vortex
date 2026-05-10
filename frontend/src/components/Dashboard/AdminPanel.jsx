@@ -4,7 +4,7 @@ import {
   Package, HeadphonesIcon, Users, ChevronDown, ChevronUp,
   CheckCircle, XCircle, Loader, Lock,
   Send, Trash2, RefreshCw,
-  Shield, Crown, Database,
+  Shield, Crown, Database, MessageSquare,
 } from 'lucide-react';
 import './styles/AdminPanel.css';
 
@@ -1110,6 +1110,179 @@ const WarnBlockModal = ({ user, dark, onClose, onDone, addToast, warningId }) =>
   );
 };
 
+const AppealsTab = ({ dark, addToast }) => {
+  const [chats, setChats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeChat, setActiveChat] = useState(null);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = React.useRef(null);
+
+  const theme = dark ? 'dark' : 'light';
+  const textColor = dark ? '#edeffd' : '#363949';
+  const subColor = dark ? '#a3bdcc' : '#677483';
+  const cardBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)';
+  const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.18)';
+
+  const fetchChats = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/appeal/staff/`, { headers: auth() });
+      setChats(res.data);
+      if (activeChat) {
+        const updated = res.data.find(c => c.id === activeChat.id);
+        if (updated) setActiveChat(updated);
+      }
+    } finally { setLoading(false); }
+  }, [activeChat]);
+
+  useEffect(() => {
+    fetchChats();
+    const interval = setInterval(fetchChats, 8000);
+    return () => clearInterval(interval);
+  }, [fetchChats]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activeChat?.messages]);
+
+  const sendMessage = async () => {
+    if (!text.trim() || !activeChat || sending) return;
+    setSending(true);
+    try {
+      const res = await axios.post(`${API}/appeal/${activeChat.id}/message/`, { text: text.trim() }, { headers: auth() });
+      setActiveChat(prev => ({ ...prev, messages: [...(prev.messages || []), res.data] }));
+      setText('');
+    } catch {
+      addToast({ type: 'error', message: 'Помилка надсилання повідомлення', duration: 4000 });
+    }
+    setSending(false);
+  };
+
+  const resolve = async (action) => {
+    if (!activeChat) return;
+    try {
+      await axios.post(`${API}/appeal/${activeChat.id}/resolve/`, { action }, { headers: auth() });
+      addToast({
+        type: 'success',
+        message: action === 'unblock' ? `«${activeChat.user_name}» розблоковано` : 'Апеляцію відхилено',
+        duration: 4000,
+      });
+      setActiveChat(null);
+      fetchChats();
+    } catch {
+      addToast({ type: 'error', message: 'Помилка', duration: 4000 });
+    }
+  };
+
+  if (loading) return <div className="ap-loader"><Loader size={24} className="spin" color="#6c9bcf" /></div>;
+
+  return (
+    <div style={{ display: 'flex', gap: '1rem', height: '70vh' }}>
+      {/* Список чатів */}
+      <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
+        {chats.length === 0 && (
+          <p style={{ color: subColor, fontSize: '0.8rem', textAlign: 'center', marginTop: '2rem' }}>Активних апеляцій немає</p>
+        )}
+        {chats.map(c => (
+          <button key={c.id} onClick={() => setActiveChat(c)}
+            style={{
+              background: activeChat?.id === c.id ? (dark ? 'rgba(108,155,207,0.15)' : 'rgba(108,155,207,0.1)') : cardBg,
+              border: activeChat?.id === c.id ? '1px solid rgba(108,155,207,0.35)' : border,
+              borderRadius: '0.7rem', padding: '0.65rem 0.85rem', textAlign: 'left',
+              cursor: 'pointer', width: '100%',
+            }}>
+            <div style={{ color: textColor, fontWeight: 600, fontSize: '0.8rem' }}>{c.user_name}</div>
+            <div style={{ color: subColor, fontSize: '0.7rem', marginTop: '0.2rem' }}>
+              {c.block_reason ? `Причина: ${c.block_reason}` : 'Апеляція'}
+            </div>
+            <div style={{ color: '#6c9bcf', fontSize: '0.68rem', marginTop: '0.2rem' }}>
+              {c.messages?.length || 0} повідомлень
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Чат */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: cardBg, border, borderRadius: '0.9rem', overflow: 'hidden' }}>
+        {!activeChat ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: subColor, fontSize: '0.82rem' }}>
+            Оберіть апеляцію зі списку
+          </div>
+        ) : (
+          <>
+            <div style={{ padding: '0.85rem 1rem', borderBottom: border, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ color: textColor, fontWeight: 700, fontSize: '0.85rem' }}>{activeChat.user_name}</span>
+                <span style={{ color: subColor, fontSize: '0.72rem', marginLeft: '0.5rem' }}>
+                  {activeChat.block_reason && `· ${activeChat.block_reason}`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="ap-btn ap-btn--approve" style={{ padding: '0.3rem 0.75rem', fontSize: '0.73rem' }}
+                  onClick={() => resolve('unblock')}>
+                  <CheckCircle size={12} /> Розблокувати
+                </button>
+                <button className="ap-btn ap-btn--reject" style={{ padding: '0.3rem 0.75rem', fontSize: '0.73rem' }}
+                  onClick={() => resolve('close')}>
+                  <XCircle size={12} /> Відхилити
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {(activeChat.messages || []).map(m => (
+                <div key={m.id} style={{
+                  alignSelf: m.is_staff ? 'flex-end' : 'flex-start',
+                  maxWidth: '75%',
+                }}>
+                  <div style={{
+                    background: m.is_staff ? 'rgba(108,155,207,0.2)' : (dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)'),
+                    borderRadius: m.is_staff ? '1rem 1rem 0.2rem 1rem' : '1rem 1rem 1rem 0.2rem',
+                    padding: '0.5rem 0.75rem',
+                  }}>
+                    <div style={{ color: m.is_staff ? '#6c9bcf' : subColor, fontSize: '0.65rem', marginBottom: '0.2rem', fontWeight: 600 }}>
+                      {m.is_staff ? '🛡 ' : ''}{m.author_name}
+                    </div>
+                    <p style={{ color: textColor, fontSize: '0.8rem', margin: 0, whiteSpace: 'pre-wrap' }}>{m.text}</p>
+                    <div style={{ color: subColor, fontSize: '0.62rem', marginTop: '0.2rem', textAlign: 'right' }}>
+                      {new Date(m.created_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+
+            <div style={{ padding: '0.75rem 1rem', borderTop: border, display: 'flex', gap: '0.5rem' }}>
+              <textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder="Відповідь модератора..."
+                rows={2}
+                style={{
+                  flex: 1, resize: 'none', borderRadius: '0.6rem', padding: '0.5rem 0.75rem',
+                  background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)',
+                  border, color: textColor, fontFamily: 'Poppins, sans-serif', fontSize: '0.8rem', outline: 'none',
+                }}
+              />
+              <button onClick={sendMessage} disabled={sending || !text.trim()}
+                style={{
+                  padding: '0 1rem', borderRadius: '0.6rem', border: 'none',
+                  background: 'linear-gradient(135deg, #6c9bcf, #1B9c85)',
+                  color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                  opacity: sending || !text.trim() ? 0.5 : 1,
+                }}>
+                {sending ? <Loader size={13} className="spin" /> : '➤'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const WarningsTab = ({ dark, currentRole, addToast }) => {
   const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1463,6 +1636,7 @@ const AdminPanel = ({ dark, currentRole, addToast, removeToast }) => {
     { id: 'builds', label: 'Збірки', icon: <Database size={15} /> },
     { id: 'users', label: 'Користувачі', icon: <Users size={15} /> },
     { id: 'warnings', label: 'Попередження', icon: <Shield size={15} /> },
+    { id: 'appeals', label: 'Апеляції', icon: <MessageSquare size={15} /> },
   ];
 
   return (
@@ -1487,6 +1661,7 @@ const AdminPanel = ({ dark, currentRole, addToast, removeToast }) => {
       {tab === 'builds' && <BuildsTab dark={dark} currentRole={currentRole} addToast={addToast} removeToast={removeToast} />}
       {tab === 'users' && <UsersTab dark={dark} currentRole={currentRole} addToast={addToast} />}
       {tab === 'warnings' && <WarningsTab dark={dark} currentRole={currentRole} addToast={addToast} />}
+      {tab === 'appeals' && <AppealsTab dark={dark} addToast={addToast} />}
     </div>
   );
 };

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Блокування акаунту — Vortex</title>
+</head>
+<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1117;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="520" cellpadding="0" cellspacing="0" style="background:#181a1e;border-radius:16px;overflow:hidden;border:1px solid rgba(224,82,82,0.2);">
+
+          <tr>
+            <td style="background:linear-gradient(135deg,#e05252,#b03030);padding:32px 40px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:rgba(255,255,255,0.2);border-radius:8px;display:inline-block;vertical-align:middle;"></div>
+                <span style="font-size:22px;font-weight:700;color:#fff;vertical-align:middle;letter-spacing:1px;">
+                  Vortex
+                </span>
+              </div>
+              <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:8px 0 0;">Arizona RP — моди та збірки</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:40px 40px 32px;">
+              <h1 style="color:#edeffd;font-size:20px;font-weight:700;margin:0 0 12px;">
+                🚫 Ваш акаунт заблоковано
+              </h1>
+              <p style="color:#a3bdcc;font-size:14px;line-height:1.7;margin:0 0 24px;">
+                Вітаємо, <strong style="color:#6c9bcf;">{{ username }}</strong>.<br>
+                Ваш акаунт на платформі <strong>Vortex</strong> було заблоковано у зв'язку з порушенням правил.
+              </p>
+
+              <div style="background:rgba(224,82,82,0.08);border:1px solid rgba(224,82,82,0.2);border-radius:10px;padding:16px 20px;margin:0 0 24px;">
+                <p style="color:#a3bdcc;font-size:13px;margin:0 0 8px;">
+                  <strong style="color:#edeffd;">Причина:</strong>
+                </p>
+                <p style="color:#edeffd;font-size:14px;margin:0;">{{ reason }}</p>
+              </div>
+
+              <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px 20px;margin:0 0 24px;">
+                <p style="color:#a3bdcc;font-size:13px;margin:0 0 4px;">
+                  <strong style="color:#edeffd;">Термін блокування:</strong>
+                </p>
+                <p style="color:#edeffd;font-size:14px;margin:0;">{{ blocked_until }}</p>
+              </div>
+
+              <p style="color:#a3bdcc;font-size:14px;line-height:1.7;margin:0 0 24px;">
+                Якщо ви вважаєте, що блокування є помилковим — ви можете подати апеляцію безпосередньо на сайті після входу в акаунт.
+              </p>
+
+              <div style="text-align:center;margin:32px 0;">
+                <a href="{{ frontend_url }}"
+                   style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#6c9bcf,#1B9c85);color:#fff;text-decoration:none;border-radius:40px;font-size:15px;font-weight:600;letter-spacing:0.3px;">
+                  Подати апеляцію
+                </a>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#13151a;padding:20px 40px;border-top:1px solid rgba(255,255,255,0.06);">
+              <p style="color:#677483;font-size:11px;margin:0;text-align:center;line-height:1.6;">
+                © 2026 Vortex<br>
+                Цей лист надіслано автоматично - не відповідайте на нього.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
