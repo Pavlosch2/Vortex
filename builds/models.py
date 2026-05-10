@@ -3,7 +3,6 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .utils import generate_torrent
 
 
 class Profile(models.Model):
@@ -121,21 +120,7 @@ class Build(models.Model):
     is_premium_only = models.BooleanField(default=False, verbose_name="Тільки для преміум")
 
     def save(self, *args, **kwargs):
-        is_new = not self.pk
         super().save(*args, **kwargs)
-        if self.source_file and (is_new or not self.torrent_file):
-            try:
-                t_name, t_hash, m_link = generate_torrent(self)
-                Build.objects.filter(pk=self.pk).update(
-                    torrent_file=f"torrents/{t_name}",
-                    info_hash=t_hash,
-                    magnet_link=m_link,
-                )
-                self.torrent_file = f"torrents/{t_name}"
-                self.info_hash = t_hash
-                self.magnet_link = m_link
-            except Exception as e:
-                print(f"[Build.save] Torrent error: {e}")
 
     def __str__(self):
         return self.title
@@ -201,6 +186,7 @@ class BuildSubmission(models.Model):
         ("failed", "Помилка"),
     ]
     upload_status = models.CharField(max_length=10, choices=UPLOAD_STATUS_CHOICES, default="pending", verbose_name="Статус завантаження")
+    upload_completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Час завершення завантаження")
 
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default="pending", verbose_name="Статус"

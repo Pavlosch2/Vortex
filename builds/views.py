@@ -923,11 +923,13 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                 identifier, archive_url = upload_submission_to_archive_from_path(
                     sub, tmp_path, file_name
                 )
+                from django.utils import timezone
                 connection.ensure_connection()
                 BuildSubmission.objects.filter(pk=sub.pk).update(
                     archive_identifier=identifier,
                     archive_url=archive_url,
                     upload_status="done",
+                    upload_completed_at=timezone.now(),
                 )
                 logger.info(f"[Submission] Завантажено на Archive.org: {archive_url}")
             except Exception as e:
@@ -964,6 +966,14 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                 {"error": "Файл ще завантажується на Archive.org. Зачекайте і спробуйте знову."},
                 status=400,
             )
+        from django.utils import timezone
+        from datetime import timedelta
+        if sub.upload_completed_at and timezone.now() < sub.upload_completed_at + timedelta(minutes=5):
+            wait_sec = int((sub.upload_completed_at + timedelta(minutes=5) - timezone.now()).total_seconds())
+            return Response(
+                {"error": f"Файл щойно завантажився. Зачекайте ще {wait_sec} секунд поки Archive.org його обробить."},
+                status=400,
+            )
 
         build = Build.objects.create(
             title=sub.title,
@@ -981,14 +991,38 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
         if sub.cover_image:
             from django.core.files.base import ContentFile
             import requests as req_lib
+            import os as _os
             try:
                 img_data = None
+                # Будуємо URL через S3 endpoint напряму
+                b2_endpoint = _os.getenv("B2_ENDPOINT_URL", "").rstrip("/")
+                b2_bucket = _os.getenv("B2_BUCKET_NAME", "")
+                if b2_endpoint and b2_bucket:
+                    img_url = f"{b2_endpoint}/{b2_bucket}/{sub.cover_image.name}"
+                else:
+                    img_url = sub.cover_image.url
+                # Підписаний запит через boto3
                 try:
-                    with sub.cover_image.open("rb") as src:
-                        img_data = src.read()
-                except Exception:
+                    import boto3
+                    s3 = boto3.client(
+                        "s3",
+                        endpoint_url=b2_endpoint,
+                        aws_access_key_id=_os.getenv("B2_ACCESS_KEY_ID"),
+                        aws_secret_access_key=_os.getenv("B2_SECRET_ACCESS_KEY"),
+                    )
+                    signed_url = s3.generate_presigned_url(
+                        "get_object",
+                        Params={"Bucket": b2_bucket, "Key": sub.cover_image.name},
+                        ExpiresIn=300,
+                    )
+                    r = req_lib.get(signed_url, timeout=30)
+                    if r.status_code == 200:
+                        img_data = r.content
+                except Exception as e:
+                    logger.warning(f"[Approve] Signed URL failed: {e}")
+                    # Fallback — пробуємо публічний URL
                     try:
-                        r = req_lib.get(sub.cover_image.url, timeout=30)
+                        r = req_lib.get(img_url, timeout=30)
                         if r.status_code == 200:
                             img_data = r.content
                     except Exception:
@@ -1000,6 +1034,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
                         ContentFile(img_data),
                         save=True,
                     )
+                    logger.info(f"[Approve] Обкладинку скопійовано для submission {sub.id}")
                 else:
                     logger.warning(f"[Approve] Не вдалося скопіювати обкладинку для submission {sub.id}")
             except Exception as img_err:
