@@ -371,6 +371,7 @@ class BuildSubmissionSerializer(serializers.ModelSerializer):
             "cover_image",
             "status",
             "upload_status",
+            "upload_completed_at",
             "archive_url",
             "rejection_reason",
             "published_build_id",

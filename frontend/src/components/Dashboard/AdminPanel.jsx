@@ -168,7 +168,18 @@ const SubmissionsTab = ({ dark, addToast }) => {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchSubs(); }, [fetchSubs]);
+  useEffect(() => {
+    fetchSubs();
+    // Автооновлення поки є заявки що завантажуються
+    const interval = setInterval(() => {
+      setSubs(prev => {
+        const hasUploading = prev.some(s => s.upload_status === 'uploading' || s.upload_status === 'pending');
+        if (hasUploading) fetchSubs();
+        return prev;
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchSubs]);
 
   const approve = async (id) => {
     setActing(id);
@@ -326,12 +337,24 @@ const SubmissionsTab = ({ dark, addToast }) => {
                           </div>
                         ) : (
                           <div className="ap-actions">
-                            <button className="ap-btn ap-btn--approve"
-                              disabled={acting === s.id || s.upload_status !== 'done'}
-                              title={s.upload_status !== 'done' ? 'Зачекайте поки файл завантажиться на Archive.org' : ''}
+                            {(() => {
+                            const uploadDone = s.upload_status === 'done';
+                            const completedAt = s.upload_completed_at ? new Date(s.upload_completed_at) : null;
+                            const cooldownEnd = completedAt ? new Date(completedAt.getTime() + 6 * 60 * 1000) : null;
+                            const inCooldown = cooldownEnd && new Date() < cooldownEnd;
+                            const waitSec = inCooldown ? Math.ceil((cooldownEnd - new Date()) / 1000) : 0;
+                            const canApprove = uploadDone && !inCooldown;
+                            const title = !uploadDone ? 'Зачекайте поки файл завантажиться на Archive.org'
+                              : inCooldown ? `Зачекайте ще ${waitSec}с поки Archive.org обробить файл` : '';
+                            return (
+                          <button className="ap-btn ap-btn--approve"
+                              disabled={acting === s.id || !canApprove}
+                              title={title}
                               onClick={() => approve(s.id)}>
                               {acting === s.id ? <Loader size={13} className="spin" /> : <CheckCircle size={14} />} Схвалити
                             </button>
+                            );
+                          })()}
                             <button className="ap-btn ap-btn--reject" onClick={() => setRejectId(s.id)}>
                               <XCircle size={14} /> Відхилити
                             </button>
