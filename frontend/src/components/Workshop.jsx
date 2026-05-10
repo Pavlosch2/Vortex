@@ -444,18 +444,6 @@ export default function Workshop({ dark }) {
         padding: '0.45rem 0.85rem', marginBottom: '0.75rem',
         borderRadius: '0.6rem', fontSize: '0.72rem',
         background: dark ? 'rgba(247,208,96,0.07)' : 'rgba(247,208,96,0.12)',
-        color: dark ? '#c9a84c' : '#8a6e1f',
-        border: '1px solid rgba(247,208,96,0.2)',
-      }}>
-        <span>⚠</span>
-        <span>Після оновлення сторінки збережуться лише файли додані з каталогу. Файли з ПК доведеться додати знову.</span>
-      </div>
-
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.45rem 0.85rem', marginBottom: '0.75rem',
-        borderRadius: '0.6rem', fontSize: '0.72rem',
-        background: dark ? 'rgba(247,208,96,0.07)' : 'rgba(247,208,96,0.12)',
         color: '#f7d060', border: '1px solid rgba(247,208,96,0.2)',
       }}>
         ⚠ При оновленні сторінки збережуться лише файли з каталогу. Файли з ПК доведеться додати знову.
