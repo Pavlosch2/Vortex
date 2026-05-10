@@ -992,6 +992,7 @@ class BuildSubmissionViewSet(viewsets.ModelViewSet):
             from django.core.files.base import ContentFile
             import requests as req_lib
             import os as _os
+            import os
             try:
                 img_data = None
                 # Будуємо URL через S3 endpoint напряму
