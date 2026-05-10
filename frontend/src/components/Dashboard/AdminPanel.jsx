@@ -1118,7 +1118,6 @@ const AppealsTab = ({ dark, addToast }) => {
   const [sending, setSending] = useState(false);
   const bottomRef = React.useRef(null);
 
-  const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const cardBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)';

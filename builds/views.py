@@ -1742,7 +1742,7 @@ class AdminBlockUserView(APIView):
             from django.conf import settings
             _u = user.username
             _r = reason
-            _b = blocked_until.strftime("%d.%m.%%m.%Y %H:%M") if blocked_until else "Назавжди"
+            _b = blocked_until.strftime("%d.%m.%Y %H:%M") if blocked_until else "Назавжди"
             _f = getattr(settings, "RESEND_API_KEY", "")
             _fu = getattr(settings, "FRONTEND_URL", "https://vortex-arizona.online")
             _html = '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0f1117;color:#edeffd;border-radius:12px"><h2 style="color:#e05252">🚫 Акаунт заблоковано</h2><p>Вітаємо, <strong>{username}</strong>.</p><p>Ваш акаунт на платформі <strong>Vortex</strong> було заблоковано.</p><div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:16px;margin:16px 0"><p style="margin:4px 0"><b>Причина:</b> {reason}</p><p style="margin:4px 0"><b>Термін:</b> {blocked_until_str}</p></div><p>Якщо ви вважаєте блокування помилковим — подайте апеляцію на сайті.</p><a href="{frontend_url}" style="display:inline-block;padding:10px 24px;background:linear-gradient(135deg,#6c9bcf,#1B9c85);color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Відкрити Vortex</a></div>'.format(username=_u, reason=_r, blocked_until_str=_b, frontend_url=_fu)
@@ -1753,6 +1753,8 @@ class AdminBlockUserView(APIView):
                     from django.conf import settings as _s
                     from pathlib import Path
                     tpl_path = Path(_s.BASE_DIR) / "templates" / "vortex_block_email.html"
+                    if not tpl_path.exists():
+                        tpl_path = Path(_s.BASE_DIR) / "templates" / "registration" / "vortex_block_email.html"
                     if tpl_path.exists():
                         _html = tpl_path.read_text(encoding="utf-8")
                         _html = _html.replace("{{ username }}", _u).replace("{{ reason }}", _r).replace("{{ blocked_until }}", _b).replace("{{ frontend_url }}", _fu)
