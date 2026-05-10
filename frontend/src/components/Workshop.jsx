@@ -268,24 +268,55 @@ const WorkshopScanModal = ({ dark, zipBlob, buildName, onDownload, onCancel }) =
   );
 };
 
+const STORAGE_KEY = 'vortex_workshop_state';
+
+function loadWorkshopState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function saveWorkshopState(folders, files, buildName, expandedFolders, activeFolder) {
+  try {
+    // Зберігаємо тільки каталогові файли (без бінарних даних)
+    const catalogFiles = files.filter(f => f.fromCatalog);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      folders, buildName, expandedFolders, activeFolder,
+      catalogFiles,
+    }));
+  } catch {}
+}
+
 export default function Workshop({ dark }) {
-  const [folders, setFolders] = useState([...DEFAULT_FOLDERS]);
-  const [files, setFiles] = useState([]);
+  const saved = loadWorkshopState();
+  const maxSavedId = saved?.catalogFiles?.length
+    ? Math.max(...saved.catalogFiles.map(f => f.id || 0))
+    : 0;
+
+  const [folders, setFolders] = useState(saved?.folders || [...DEFAULT_FOLDERS]);
+  const [files, setFiles] = useState(saved?.catalogFiles || []);
   const [expandedFolders, setExpandedFolders] = useState(
-    Object.fromEntries(DEFAULT_FOLDERS.map(f => [f, true]))
+    saved?.expandedFolders || Object.fromEntries(DEFAULT_FOLDERS.map(f => [f, true]))
   );
-  const [activeFolder, setActiveFolder] = useState('CLEO');
+  const [activeFolder, setActiveFolder] = useState(saved?.activeFolder || 'CLEO');
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
-  const [buildName, setBuildName] = useState('');
+  const [buildName, setBuildName] = useState(saved?.buildName || '');
   const [sending, setSending] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [zipBlob, setZipBlob] = useState(null);
   const [showScan, setShowScan] = useState(false);
   const fileInputRef = useRef(null);
-  const idCounter = useRef(0);
+  const idCounter = useRef(maxSavedId);
+
+  // Зберігаємо стан при кожній зміні
+  React.useEffect(() => {
+    saveWorkshopState(folders, files, buildName, expandedFolders, activeFolder);
+  }, [folders, files, buildName, expandedFolders, activeFolder]);
 
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
@@ -393,6 +424,13 @@ export default function Workshop({ dark }) {
     window.URL.revokeObjectURL(url);
     setShowScan(false);
     setZipBlob(null);
+    // Очищаємо збережений стан після скачування
+    localStorage.removeItem(STORAGE_KEY);
+    setFiles([]);
+    setFolders([...DEFAULT_FOLDERS]);
+    setBuildName('');
+    setExpandedFolders(Object.fromEntries(DEFAULT_FOLDERS.map(f => [f, true])));
+    setActiveFolder('CLEO');
   };
 
   const filesInFolder = (folder) => files.filter(f => f.path.startsWith(`${folder}/`));
@@ -400,6 +438,28 @@ export default function Workshop({ dark }) {
   return (
     <div className={`ws-root ${theme}`}>
       <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        padding: '0.45rem 0.85rem', marginBottom: '0.75rem',
+        borderRadius: '0.6rem', fontSize: '0.72rem',
+        background: dark ? 'rgba(247,208,96,0.07)' : 'rgba(247,208,96,0.12)',
+        color: dark ? '#c9a84c' : '#8a6e1f',
+        border: '1px solid rgba(247,208,96,0.2)',
+      }}>
+        <span>⚠</span>
+        <span>Після оновлення сторінки збережуться лише файли додані з каталогу. Файли з ПК доведеться додати знову.</span>
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        padding: '0.45rem 0.85rem', marginBottom: '0.75rem',
+        borderRadius: '0.6rem', fontSize: '0.72rem',
+        background: dark ? 'rgba(247,208,96,0.07)' : 'rgba(247,208,96,0.12)',
+        color: '#f7d060', border: '1px solid rgba(247,208,96,0.2)',
+      }}>
+        ⚠ При оновленні сторінки збережуться лише файли з каталогу. Файли з ПК доведеться додати знову.
+      </div>
 
       <div className="ws-toolbar">
         <h2 className="ws-title" style={{ color: textColor }}>🔧 Майстерня</h2>
