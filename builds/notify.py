@@ -44,28 +44,23 @@ def notify_moderation_warning(user, actor, warning_text):
     )
 
 
-def notify_submission_status(user, submission_title, new_status, submission_id, rejection_reason=""):
+def notify_submission_status(user, submission_title, new_status, submission_id, rejection_reason="", build_id=None):
     STATUS_LABELS = {
-        "approved": "схвалено",
-        "rejected": "відхилено",
+        "approved": "схвалено ✅",
+        "rejected": "відхилено ❌",
         "pending": "повернуто на розгляд",
     }
     label = STATUS_LABELS.get(new_status, new_status)
-
-    if new_status in ("approved", "rejected"):
-        body = f"Вашу збірку \"{submission_title}\" {label}."
-        link_type = "submission_detail"
-    else:
-        body = f"Статус вашої збірки \"{submission_title}\" змінено на {label}."
-        link_type = "submission_detail"
+    body = f"Вашу збірку \"{submission_title}\" {label}."
 
     Notification.objects.create(
         user=user,
         type="submission_status",
         body=body,
-        link_type=link_type,
+        link_type="submission_detail",
         link_params={
             "submission_id": submission_id,
+            "build_id": build_id,
             "status": new_status,
             "rejection_reason": rejection_reason,
         },

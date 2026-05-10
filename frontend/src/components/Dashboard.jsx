@@ -122,6 +122,10 @@ export default function Dashboard({ onLogout, dark, setDark }) {
   }, [addToast, pollTask, updateToast, cancelTask]);
 
   const handleNotifNavigate = useCallback((nav, extra) => {
+    if (nav === 'profile' && extra?.username) {
+      setProfileUsername(extra.username);
+      return;
+    }
     setNavExtra(extra || null);
     setActiveNav(nav);
   }, []);

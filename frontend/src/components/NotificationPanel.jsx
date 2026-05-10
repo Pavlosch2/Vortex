@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bell } from 'lucide-react';
 import './styles/NotificationPanel.css';
 
+
 const TYPE_ICONS = {
   post_reply: '💬',
   ticket_reply: '🎫',
@@ -55,7 +56,13 @@ export default function NotificationPanel({ dark, notifications, unreadCount, ma
         onNavigate('support', { warning: p.warning_text });
         break;
       case 'submission_detail':
-        onNavigate('admin', { highlight: { submission_id: p.submission_id } });
+        // Якщо схвалено і є build_id — ведемо на каталог до збірки
+        if (p.build_id) {
+          onNavigate('catalog', { highlight: { build_id: p.build_id } });
+        } else if (p.submission_id) {
+          // Відхилено або ще на розгляді — ведемо в підтримку (або просто нічого)
+          onNavigate('support', {});
+        }
         break;
       default:
         break;
@@ -117,7 +124,19 @@ export default function NotificationPanel({ dark, notifications, unreadCount, ma
                   {!n.is_read && <div className="notif-unread-bar" />}
                   <div className="notif-item-icon">{TYPE_ICONS[n.type] || '🔔'}</div>
                   <div className="notif-item-body">
-                    <p className="notif-item-text">{n.body}</p>
+                    <p className="notif-item-text">
+                      {n.actor_name && onNavigate ? (
+                        <>
+                          <span
+                            className="notif-link"
+                            onClick={e => { e.stopPropagation(); setOpen(false); onNavigate('profile', { username: n.actor_name }); }}
+                          >
+                            {n.actor_name}
+                          </span>
+                          {' '}{n.body.replace(n.actor_name, '').trim()}
+                        </>
+                      ) : n.body}
+                    </p>
                     <span className="notif-item-time">{timeAgo(n.created_at)}</span>
                   </div>
                   <button

@@ -234,3 +234,14 @@
 .notif-delete-btn:hover {
   color: #e05252;
 }
+.notif-link {
+  color: #6c9bcf;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.notif-link:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
