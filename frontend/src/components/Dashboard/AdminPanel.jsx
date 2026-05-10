@@ -153,12 +153,20 @@ const SubmissionsTab = ({ dark, addToast }) => {
   const [rejectId, setRejectId] = useState(null);
   const [reason, setReason] = useState('');
   const [acting, setActing] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [now, setNow] = useState(Date.now());
 
   const theme = dark ? 'dark' : 'light';
   const textColor = dark ? '#edeffd' : '#363949';
   const subColor = dark ? '#a3bdcc' : '#677483';
   const cardBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)';
   const border = dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(132,139,200,0.18)';
+
+  // Оновлення таймеру кожну секунду для cooldown
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const fetchSubs = useCallback(async () => {
     setLoading(true);
@@ -168,18 +176,26 @@ const SubmissionsTab = ({ dark, addToast }) => {
     } finally { setLoading(false); }
   }, []);
 
+  // Точкове оновлення тільки заявок що завантажуються — без перезавантаження всього списку
+  const refreshUploading = useCallback(async () => {
+    setSubs(prev => {
+      const uploadingIds = prev.filter(s => s.upload_status === 'uploading' || s.upload_status === 'pending').map(s => s.id);
+      if (uploadingIds.length === 0) return prev;
+      uploadingIds.forEach(async id => {
+        try {
+          const res = await axios.get(`${API}/submissions/${id}/`, { headers: auth() });
+          setSubs(cur => cur.map(s => s.id === id ? { ...s, ...res.data } : s));
+        } catch {}
+      });
+      return prev;
+    });
+  }, []);
+
   useEffect(() => {
     fetchSubs();
-    // Автооновлення поки є заявки що завантажуються
-    const interval = setInterval(() => {
-      setSubs(prev => {
-        const hasUploading = prev.some(s => s.upload_status === 'uploading' || s.upload_status === 'pending');
-        if (hasUploading) fetchSubs();
-        return prev;
-      });
-    }, 10000);
+    const interval = setInterval(refreshUploading, 10000);
     return () => clearInterval(interval);
-  }, [fetchSubs]);
+  }, [fetchSubs, refreshUploading]);
 
   const approve = async (id) => {
     setActing(id);
@@ -203,29 +219,61 @@ const SubmissionsTab = ({ dark, addToast }) => {
     } finally { setActing(null); }
   };
 
+  const deleteSelected = () => {
+    const ids = [...selected];
+    const snapshots = subs.filter(s => ids.includes(s.id));
+    setSubs(prev => prev.filter(s => !ids.includes(s.id)));
+    setSelected(new Set());
+    let cancelled = false;
+    const timers = ids.map(id => setTimeout(async () => {
+      if (cancelled) return;
+      try { await axios.delete(`${API}/submissions/${id}/`, { headers: auth() }); } catch {}
+    }, 5000));
+    addToast({
+      type: 'info',
+      message: `Видалено ${ids.length} ${ids.length === 1 ? 'заявку' : ids.length < 5 ? 'заявки' : 'заявок'}`,
+      duration: 5000,
+      collapsible: false,
+      onCancel: () => {
+        cancelled = true;
+        timers.forEach(t => clearTimeout(t));
+        setSubs(prev => {
+          const existing = new Set(prev.map(s => s.id));
+          return [...prev, ...snapshots.filter(s => !existing.has(s.id))].sort((a, b) => b.id - a.id);
+        });
+      },
+    });
+  };
+
   const deleteSubmission = (id) => {
     const snapshot = subs.find(s => s.id === id);
     setSubs(prev => prev.filter(s => s.id !== id));
+    setSelected(prev => { const n = new Set(prev); n.delete(id); return n; });
     let cancelled = false;
     const timer = setTimeout(async () => {
       if (cancelled) return;
-      try {
-        await axios.delete(`${API}/submissions/${id}/`, { headers: auth() });
-      } catch {
-        setSubs(prev => [...prev, snapshot].sort((a, b) => a.id - b.id));
-      }
+      try { await axios.delete(`${API}/submissions/${id}/`, { headers: auth() }); }
+      catch { setSubs(prev => [...prev, snapshot].sort((a, b) => b.id - a.id)); }
     }, 5000);
     addToast({
       type: 'info',
       message: `Заявку "${snapshot?.title}" видалено`,
       duration: 5000,
       collapsible: false,
-      cancelTaskId: id,
-      onCancel: () => { cancelled = true; clearTimeout(timer); setSubs(prev => [...prev, snapshot].sort((a, b) => a.id - b.id)); },
+      onCancel: () => { cancelled = true; clearTimeout(timer); setSubs(prev => [...prev, snapshot].sort((a, b) => b.id - a.id)); },
     });
   };
 
   const filtered = subs.filter(s => filter === 'all' || s.status === filter);
+  const selectableSubs = filtered.filter(s => s.status !== 'pending');
+  const allSelected = selectableSubs.length > 0 && selectableSubs.every(s => selected.has(s.id));
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected(prev => { const n = new Set(prev); selectableSubs.forEach(s => n.delete(s.id)); return n; });
+    } else {
+      setSelected(prev => { const n = new Set(prev); selectableSubs.forEach(s => n.add(s.id)); return n; });
+    }
+  };
 
   return (
     <div>
@@ -233,12 +281,10 @@ const SubmissionsTab = ({ dark, addToast }) => {
         {['all', 'pending', 'approved', 'rejected'].map(f => (
           <button key={f} className={`ap-pill ${f === filter ? 'active' : ''}`}
             style={f !== filter ? { background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(108,155,207,0.08)', color: subColor } : {}}
-            onClick={() => setFilter(f)}>
+            onClick={() => { setFilter(f); setSelected(new Set()); }}>
             {{ all: 'Всі', pending: 'На розгляді', approved: 'Схвалені', rejected: 'Відхилені' }[f]}
             {f === 'pending' && subs.filter(s => s.status === 'pending').length > 0 && (
-              <span className="ap-pending-badge">
-                {subs.filter(s => s.status === 'pending').length}
-              </span>
+              <span className="ap-pending-badge">{subs.filter(s => s.status === 'pending').length}</span>
             )}
           </button>
         ))}
@@ -246,6 +292,22 @@ const SubmissionsTab = ({ dark, addToast }) => {
           <RefreshCw size={13} /> Оновити
         </button>
       </div>
+
+      {/* Масові дії */}
+      {selectableSubs.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.78rem', color: subColor }}>
+            <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+              style={{ accentColor: '#6c9bcf', width: 14, height: 14 }} />
+            Вибрати всі ({selectableSubs.length})
+          </label>
+          {selected.size > 0 && (
+            <button className="ap-btn ap-btn--delete" onClick={deleteSelected} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
+              <Trash2 size={12} /> Видалити вибрані ({selected.size})
+            </button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="ap-loader"><Loader size={24} className="spin" color="#6c9bcf" /></div>
@@ -256,21 +318,41 @@ const SubmissionsTab = ({ dark, addToast }) => {
           {filtered.map(s => {
             const st = SUB_STATUS[s.status];
             const isOpen = expanded === s.id;
+            const isSelected = selected.has(s.id);
+            const canSelect = s.status !== 'pending';
+
+            const uploadDone = s.upload_status === 'done';
+            const completedAt = s.upload_completed_at ? new Date(s.upload_completed_at) : null;
+            const cooldownEnd = completedAt ? new Date(completedAt.getTime() + 6 * 60 * 1000) : null;
+            const inCooldown = cooldownEnd && now < cooldownEnd.getTime();
+            const waitSec = inCooldown ? Math.ceil((cooldownEnd.getTime() - now) / 1000) : 0;
+            const canApprove = uploadDone && !inCooldown;
+
             return (
-              <div key={s.id} className="ap-card" style={{ background: cardBg, border }}>
-                <button className="ap-card-toggle" onClick={() => setExpanded(isOpen ? null : s.id)}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="ap-card-tags">
-                      <span className="ap-card-title" style={{ color: textColor }}>{s.title}</span>
-                      <Badge {...st} />
-                      <span className="ap-card-meta" style={{ color: subColor }}>{s.build_type === 'script' ? 'Скрипт' : 'Збірка'}</span>
+              <div key={s.id} className="ap-card" style={{
+                background: isSelected ? (dark ? 'rgba(108,155,207,0.08)' : 'rgba(108,155,207,0.06)') : cardBg,
+                border: isSelected ? '1px solid rgba(108,155,207,0.3)' : border,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {canSelect && (
+                    <input type="checkbox" checked={isSelected}
+                      onChange={() => setSelected(prev => { const n = new Set(prev); isSelected ? n.delete(s.id) : n.add(s.id); return n; })}
+                      style={{ accentColor: '#6c9bcf', width: 14, height: 14, flexShrink: 0, marginLeft: '0.75rem' }} />
+                  )}
+                  <button className="ap-card-toggle" style={{ flex: 1 }} onClick={() => setExpanded(isOpen ? null : s.id)}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="ap-card-tags">
+                        <span className="ap-card-title" style={{ color: textColor }}>{s.title}</span>
+                        <Badge {...st} />
+                        <span className="ap-card-meta" style={{ color: subColor }}>{s.build_type === 'script' ? 'Скрипт' : 'Збірка'}</span>
+                      </div>
+                      <p className="ap-card-meta" style={{ color: subColor }}>
+                        від {s.submitted_by_name} · {new Date(s.created_at).toLocaleDateString('uk-UA')}
+                      </p>
                     </div>
-                    <p className="ap-card-meta" style={{ color: subColor }}>
-                      від {s.submitted_by_name} · {new Date(s.created_at).toLocaleDateString('uk-UA')}
-                    </p>
-                  </div>
-                  {isOpen ? <ChevronUp size={16} color={subColor} /> : <ChevronDown size={16} color={subColor} />}
-                </button>
+                    {isOpen ? <ChevronUp size={16} color={subColor} /> : <ChevronDown size={16} color={subColor} />}
+                  </button>
+                </div>
 
                 {isOpen && (
                   <div className="ap-card-body" style={{ borderTop: border }}>
@@ -293,7 +375,6 @@ const SubmissionsTab = ({ dark, addToast }) => {
 
                     {s.status === 'pending' && (
                       <>
-                        {/* Статус завантаження на Archive.org */}
                         {s.upload_status && s.upload_status !== 'done' && (
                           <div style={{
                             padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginBottom: '0.75rem',
@@ -307,13 +388,20 @@ const SubmissionsTab = ({ dark, addToast }) => {
                             {s.upload_status === 'failed' && '⚠ Помилка завантаження на Archive.org. Зверніться до розробника.'}
                           </div>
                         )}
-                        {s.upload_status === 'done' && (
+                        {uploadDone && !inCooldown && (
                           <div style={{
                             padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginBottom: '0.75rem',
-                            background: 'rgba(27,156,133,0.1)', color: '#1B9c85',
-                            fontSize: '0.75rem',
+                            background: 'rgba(27,156,133,0.1)', color: '#1B9c85', fontSize: '0.75rem',
                           }}>
                             ✓ Файл на Archive.org. Можна схвалювати.
+                          </div>
+                        )}
+                        {inCooldown && (
+                          <div style={{
+                            padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginBottom: '0.75rem',
+                            background: 'rgba(247,208,96,0.1)', color: '#f7d060', fontSize: '0.75rem',
+                          }}>
+                            ⏳ Archive.org обробляє файл. Схвалення через {waitSec}с
                           </div>
                         )}
                         {rejectId === s.id ? (
@@ -328,8 +416,7 @@ const SubmissionsTab = ({ dark, addToast }) => {
                                 onClick={() => reject(s.id)}>
                                 {acting === s.id ? <Loader size={13} className="spin" /> : 'Підтвердити відхилення'}
                               </button>
-                              <button className="ap-btn ap-btn--cancel"
-                                style={{ color: subColor }}
+                              <button className="ap-btn ap-btn--cancel" style={{ color: subColor }}
                                 onClick={() => { setRejectId(null); setReason(''); }}>
                                 Скасувати
                               </button>
@@ -337,24 +424,12 @@ const SubmissionsTab = ({ dark, addToast }) => {
                           </div>
                         ) : (
                           <div className="ap-actions">
-                            {(() => {
-                            const uploadDone = s.upload_status === 'done';
-                            const completedAt = s.upload_completed_at ? new Date(s.upload_completed_at) : null;
-                            const cooldownEnd = completedAt ? new Date(completedAt.getTime() + 6 * 60 * 1000) : null;
-                            const inCooldown = cooldownEnd && new Date() < cooldownEnd;
-                            const waitSec = inCooldown ? Math.ceil((cooldownEnd - new Date()) / 1000) : 0;
-                            const canApprove = uploadDone && !inCooldown;
-                            const title = !uploadDone ? 'Зачекайте поки файл завантажиться на Archive.org'
-                              : inCooldown ? `Зачекайте ще ${waitSec}с поки Archive.org обробить файл` : '';
-                            return (
-                          <button className="ap-btn ap-btn--approve"
+                            <button className="ap-btn ap-btn--approve"
                               disabled={acting === s.id || !canApprove}
-                              title={title}
+                              title={!uploadDone ? 'Зачекайте поки файл завантажиться на Archive.org' : inCooldown ? `Зачекайте ще ${waitSec}с` : ''}
                               onClick={() => approve(s.id)}>
                               {acting === s.id ? <Loader size={13} className="spin" /> : <CheckCircle size={14} />} Схвалити
                             </button>
-                            );
-                          })()}
                             <button className="ap-btn ap-btn--reject" onClick={() => setRejectId(s.id)}>
                               <XCircle size={14} /> Відхилити
                             </button>
