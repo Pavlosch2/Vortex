@@ -370,15 +370,12 @@ class BuildSubmissionSerializer(serializers.ModelSerializer):
             "source_file",
             "cover_image",
             "status",
-            "upload_status",
-            "upload_completed_at",
-            "archive_url",
             "rejection_reason",
             "published_build_id",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["status", "upload_status", "archive_url", "rejection_reason", "published_build_id"]
+        read_only_fields = ["status", "rejection_reason", "published_build_id"]
 
 
 class AnalysisTaskSerializer(serializers.ModelSerializer):
@@ -602,7 +599,9 @@ class AppealMessageSerializer(serializers.ModelSerializer):
 class AppealChatSerializer(serializers.ModelSerializer):
     messages = AppealMessageSerializer(many=True, read_only=True)
     block = UserBlockSerializer(read_only=True)
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    block_reason = serializers.CharField(source="block.reason", read_only=True, default="")
 
     class Meta:
         model = AppealChat
-        fields = ["id", "is_closed", "created_at", "messages", "block"]
+        fields = ["id", "is_closed", "created_at", "messages", "block", "user_name", "block_reason"]

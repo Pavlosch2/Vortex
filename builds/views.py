@@ -1750,16 +1750,13 @@ class AdminBlockUserView(APIView):
             def _send_block_email(_email=_email, _f=_f, _u=_u, _r=_r, _b=_b, _fu=_fu):
                 try:
                     import resend
-                    from django.conf import settings as _s
-                    from pathlib import Path
-                    tpl_path = Path(_s.BASE_DIR) / "templates" / "vortex_block_email.html"
-                    if not tpl_path.exists():
-                        tpl_path = Path(_s.BASE_DIR) / "templates" / "registration" / "vortex_block_email.html"
-                    if tpl_path.exists():
-                        _html = tpl_path.read_text(encoding="utf-8")
-                        _html = _html.replace("{{ username }}", _u).replace("{{ reason }}", _r).replace("{{ blocked_until }}", _b).replace("{{ frontend_url }}", _fu)
-                    else:
-                        _html = f"<p>Акаунт {_u} заблоковано. Причина: {_r}. Термін: {_b}.</p>"
+                    from django.template.loader import render_to_string
+                    _html = render_to_string("vortex_block_email.html", {
+                        "username": _u,
+                        "reason": _r,
+                        "blocked_until": _b,
+                        "frontend_url": _fu,
+                    })
                     resend.api_key = _f
                     resend.Emails.send({
                         "from": "noreply@vortex-arizona.online",
