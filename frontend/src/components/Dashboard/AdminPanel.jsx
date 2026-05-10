@@ -175,6 +175,9 @@ const SubmissionsTab = ({ dark, addToast }) => {
     try {
       await axios.post(`${API}/submissions/${id}/approve/`, {}, { headers: auth() });
       setSubs(prev => prev.map(s => s.id === id ? { ...s, status: 'approved' } : s));
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Помилка схвалення';
+      addToast({ type: 'error', message: msg, duration: 7000 });
     } finally { setActing(null); }
   };
 
@@ -278,36 +281,63 @@ const SubmissionsTab = ({ dark, addToast }) => {
                     )}
 
                     {s.status === 'pending' && (
-                      rejectId === s.id ? (
-                        <div className="ap-reject-form">
-                          <textarea className={`ap-reject-textarea ${theme}`}
-                            placeholder="Вкажіть причину відхилення..."
-                            value={reason} onChange={e => setReason(e.target.value)}
-                            style={{ color: textColor }} />
+                      <>
+                        {/* Статус завантаження на Archive.org */}
+                        {s.upload_status && s.upload_status !== 'done' && (
+                          <div style={{
+                            padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginBottom: '0.75rem',
+                            background: s.upload_status === 'failed' ? 'rgba(255,0,96,0.1)' : 'rgba(247,208,96,0.1)',
+                            color: s.upload_status === 'failed' ? '#ff0060' : '#f7d060',
+                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
+                          }}>
+                            {s.upload_status === 'uploading' && <Loader size={12} className="spin" />}
+                            {s.upload_status === 'uploading' && 'Файл завантажується на Archive.org...'}
+                            {s.upload_status === 'pending' && '⏳ Файл очікує завантаження на Archive.org'}
+                            {s.upload_status === 'failed' && '⚠ Помилка завантаження на Archive.org. Зверніться до розробника.'}
+                          </div>
+                        )}
+                        {s.upload_status === 'done' && (
+                          <div style={{
+                            padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginBottom: '0.75rem',
+                            background: 'rgba(27,156,133,0.1)', color: '#1B9c85',
+                            fontSize: '0.75rem',
+                          }}>
+                            ✓ Файл на Archive.org. Можна схвалювати.
+                          </div>
+                        )}
+                        {rejectId === s.id ? (
+                          <div className="ap-reject-form">
+                            <textarea className={`ap-reject-textarea ${theme}`}
+                              placeholder="Вкажіть причину відхилення..."
+                              value={reason} onChange={e => setReason(e.target.value)}
+                              style={{ color: textColor }} />
+                            <div className="ap-actions">
+                              <button className="ap-btn ap-btn--confirm-reject"
+                                disabled={!reason.trim() || acting === s.id}
+                                onClick={() => reject(s.id)}>
+                                {acting === s.id ? <Loader size={13} className="spin" /> : 'Підтвердити відхилення'}
+                              </button>
+                              <button className="ap-btn ap-btn--cancel"
+                                style={{ color: subColor }}
+                                onClick={() => { setRejectId(null); setReason(''); }}>
+                                Скасувати
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
                           <div className="ap-actions">
-                            <button className="ap-btn ap-btn--confirm-reject"
-                              disabled={!reason.trim() || acting === s.id}
-                              onClick={() => reject(s.id)}>
-                              {acting === s.id ? <Loader size={13} className="spin" /> : 'Підтвердити відхилення'}
+                            <button className="ap-btn ap-btn--approve"
+                              disabled={acting === s.id || s.upload_status !== 'done'}
+                              title={s.upload_status !== 'done' ? 'Зачекайте поки файл завантажиться на Archive.org' : ''}
+                              onClick={() => approve(s.id)}>
+                              {acting === s.id ? <Loader size={13} className="spin" /> : <CheckCircle size={14} />} Схвалити
                             </button>
-                            <button className="ap-btn ap-btn--cancel"
-                              style={{ color: subColor }}
-                              onClick={() => { setRejectId(null); setReason(''); }}>
-                              Скасувати
+                            <button className="ap-btn ap-btn--reject" onClick={() => setRejectId(s.id)}>
+                              <XCircle size={14} /> Відхилити
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="ap-actions">
-                          <button className="ap-btn ap-btn--approve" disabled={acting === s.id}
-                            onClick={() => approve(s.id)}>
-                            {acting === s.id ? <Loader size={13} className="spin" /> : <CheckCircle size={14} />} Схвалити
-                          </button>
-                          <button className="ap-btn ap-btn--reject" onClick={() => setRejectId(s.id)}>
-                            <XCircle size={14} /> Відхилити
-                          </button>
-                        </div>
-                      )
+                        )}
+                      </>
                     )}
                   </div>
                 )}
