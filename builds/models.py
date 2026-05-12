@@ -1,2073 +1,597 @@
 from django.contrib.auth.models import User
-from django.db.models import Avg, Count
-from django.shortcuts import get_object_or_404
 from django.db import models
-
-from rest_framework import generics, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
-from .ai_logic import ai_search_builds, get_compatibility_analysis
-from .models import (
-    AIAnalysisLog,
-    AnalysisTask,
-    Build,
-    BuildImage,
-    BuildPostReply,
-    BuildSubmission,
-    Favorite,
-    PCSpecs,
-    SupportTicket,
-    TicketReply,
-    TicketScreenshot,
-    Notification,
-    UserWarning,
-    UserBlock,
-    AppealChat,
-    AppealMessage,
-    ProfileMessage,
-    FeaturedBuild
-)
-from .serializers import (
-    AIAnalysisLogSerializer,
-    AnalysisTaskSerializer,
-    BuildImageSerializer,
-    BuildPostReplySerializer,
-    BuildPostSerializer,
-    BuildReviewSerializer,
-    BuildSerializer,
-    BuildSubmissionSerializer,
-    PCSpecsSerializer,
-    ProfileSerializer,
-    RegisterSerializer,
-    SupportTicketSerializer,
-    TicketReplySerializer,
-    UserAdminSerializer,
-    NotificationSerializer,
-    UserWarningSerializer, 
-    UserBlockSerializer, 
-    AppealMessageSerializer, 
-    AppealChatSerializer,
-    PublicProfileSerializer,
-    BuildSerializer,
-    ProfileMessageSerializer,
-)
-
-from .notify import (
-    notify_post_reply,
-    notify_ticket_reply,
-    notify_ai_done,
-    notify_submission_status,
-)
-
-import logging
-logger = logging.getLogger(__name__)
-
-def get_role(user):
-    try:
-        return user.profile.role
-    except Exception:
-        return "user"
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
-def is_staff(user):
-    return get_role(user) in ("manager", "admin")
 
-
-def is_admin(user):
-    return get_role(user) == "admin"
-
-class BuildViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = BuildSerializer
+class Profile(models.Model):
+    ROLES = [
+        ("user", "Користувач"),
+        ("manager", "Менеджер контенту"),
+        ("admin", "Адміністратор"),
+    ]
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    age = models.IntegerField(default=18)
+    avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)
+    bio = models.TextField(max_length=500, blank=True)
+    role = models.CharField(max_length=10, choices=ROLES, default="user")
+    ai_credits = models.IntegerField(default=5, verbose_name="Баланс AI-аналізів")
+    banner = models.ImageField(upload_to="banners/", null=True, blank=True, verbose_name="Банер профілю")
+    last_seen = models.DateTimeField(null=True, blank=True, verbose_name="Остання активність")
+    plan_expires_at = models.DateTimeField(null=True, blank=True, verbose_name="Підписка діє до")
+    PLAN_CHOICES = [
+        ("free", "Безкоштовно"),
+        ("standard", "Стандарт $6/міс"),
+        ("pro", "Pro $17/міс"),
+    ]
+    FRAME_CHOICES = [
+        ("", "Без рамки"),
+        ("gold", "Золота"),
+        ("animated", "Анімована"),
+        ("neon", "Неонова"),
+    ]
  
-    def get_queryset(self):
-        from django.db.models import Avg, Count
-        from django.utils import timezone
- 
-        qs = Build.objects.filter(is_public=True).prefetch_related(
-            "images", "components", "reviews", "posts"
-        ).annotate(
-            avg_rating=Avg("reviews__score"),
-            total_reviews=Count("reviews"),
-        )
- 
-        t = self.request.query_params.get("type")
-        if t:
-            qs = qs.filter(build_type=t)
- 
-        tag = self.request.query_params.get("tag")
-        if tag:
-            qs = qs.filter(tags__icontains=tag)
- 
-        if self.request.query_params.get("favorites") == "1":
-            if self.request.user.is_authenticated:
-                fav_ids = self.request.user.favorites.values_list("build_id", flat=True)
-                qs = qs.filter(id__in=fav_ids)
+    plan = models.CharField(max_length=10, choices=PLAN_CHOICES, default="free", verbose_name="План підписки")
+    av_checks_left = models.IntegerField(default=0, verbose_name="Залишилось антивірусних перевірок")
+    profile_color = models.CharField(max_length=7, blank=True, default="", verbose_name="Колір ніку (Pro)")
+    avatar_frame = models.CharField(max_length=20, blank=True, default="", choices=FRAME_CHOICES, verbose_name="Рамка аватарки (Pro)")
+    two_factor_enabled = models.BooleanField(default=False, verbose_name="Двофакторна автентифікація")
 
-        sort = self.request.query_params.get("sort")
-        if sort == "rating_desc":
-            qs = qs.order_by("-avg_rating", "-total_reviews", "-created_at")
-        elif sort == "rating_asc":
-            qs = qs.order_by("avg_rating", "total_reviews", "-created_at")
-        elif sort == "reviews_desc":
-            qs = qs.order_by("-total_reviews", "-avg_rating", "-created_at")
-        elif sort == "reviews_asc":
-            qs = qs.order_by("total_reviews", "avg_rating", "-created_at")
-        else:
-            qs = qs.order_by("-created_at")
- 
-        min_reviews = self.request.query_params.get("min_reviews")
-        if min_reviews and min_reviews.isdigit():
-            qs = qs.filter(total_reviews__gte=int(min_reviews))
- 
-        rating_min = self.request.query_params.get("rating_min")
-        rating_max = self.request.query_params.get("rating_max")
-        if rating_min:
-            try:
-                qs = qs.filter(avg_rating__gte=float(rating_min))
-            except ValueError:
-                pass
-        if rating_max:
-            try:
-                qs = qs.filter(avg_rating__lte=float(rating_max))
-            except ValueError:
-                pass
-
-        user = self.request.user
-        is_premium_user = (
-            user.is_authenticated and
-            getattr(user, 'profile', None) and
-            user.profile.is_premium
-        )
-        if not is_premium_user:
-            qs = qs.filter(is_premium_only=False)
- 
-        return qs
- 
-    def get_serializer_context(self):
-        return {"request": self.request}
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def favorite(self, request, pk=None):
-        build = self.get_object()
-        fav, created = Favorite.objects.get_or_create(user=request.user, build=build)
-        if not created:
-            fav.delete()
-            return Response({"is_favorite": False})
-        return Response({"is_favorite": True})
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def analyze_async(self, request, pk=None):
-        build = self.get_object()
-        profile = request.user.profile
-
-        if not PCSpecs.objects.filter(user=request.user, is_active=True).exists():
-            return Response(
-                {"error": "Спочатку збережіть характеристики свого ПК."},
-                status=400,
-            )
-        if not profile.is_premium and profile.ai_credits <= 0:
-            return Response({"error": "AI-кредити вичерпано."}, status=402)
-
-        task = AnalysisTask.objects.create(user=request.user, build=build)
-
-        try:
-            from .tasks import run_analysis_task
-
-            run_analysis_task(task.id)
-        except Exception as e:
-            task.status = "running"
-            task.save(update_fields=["status"])
-            _run_sync(task)
-
-        return Response({"task_id": task.id, "status": task.status}, status=202)
-
-    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
-    def search(self, request):
-        query = request.query_params.get("q", "").strip()
-        if not query:
-            return Response({"error": "q є обов'язковим"}, status=400)
-
-        profile = request.user.profile
-
-        if not profile.is_premium and profile.ai_credits <= 0:
-            return Response(
-                {
-                    "error": "AI-кредити вичерпано. Придбайте преміум або зверніться до адміністратора."
-                },
-                status=402,
-            )
-
-        builds = Build.objects.filter(is_public=True).prefetch_related(
-            "components", "images"
-        )
-        data = []
-        for b in builds:
-            components = [
-                {
-                    "name": c.name,
-                    "category": c.get_category_display(),
-                    "complexity": c.get_complexity_level_display(),
-                }
-                for c in b.components.all()
-            ]
-            data.append(
-                {
-                    "id": b.id,
-                    "title": b.title,
-                    "description": b.description[:300],
-                    "tags": b.tags,
-                    "build_type": b.build_type,
-                    "rating": str(
-                        round(b.reviews.aggregate(avg=Avg("score"))["avg"] or 0, 1)
-                    ),
-                    "components": components,
-                }
-            )
-
-        specs = PCSpecs.objects.filter(user=request.user, is_active=True).first()
-
-        ids = ai_search_builds(query, data, specs)
-
-        if not profile.is_premium:
-            profile.ai_credits -= 1
-            profile.save(update_fields=["ai_credits"])
-
-        by_id = {b.id: b for b in builds}
-        sorted_builds = [by_id[i] for i in ids if i in by_id]
-        return Response(
-            {
-                "results": BuildSerializer(
-                    sorted_builds, many=True, context={"request": request}
-                ).data,
-                "credits_left": profile.ai_credits if not profile.is_premium else None,
-            }
-        )
-
-    @action(detail=True, methods=["get", "post"], permission_classes=[])
-    def reviews(self, request, pk=None):
-        import traceback
-
-        build = self.get_object()
-        try:
-            if request.method == "GET":
-                qs = build.reviews.select_related("user").all()
-                return Response(BuildReviewSerializer(qs, many=True).data)
-            if not request.user.is_authenticated:
-                return Response({"error": "Необхідна авторизація"}, status=401)
-            existing = build.reviews.filter(user=request.user).first()
-            ser = BuildReviewSerializer(
-                existing, data=request.data, partial=bool(existing)
-            )
-            ser.is_valid(raise_exception=True)
-            ser.save(build=build, user=request.user)
-            return Response(ser.data, status=200 if existing else 201)
-        except Exception as e:
-            return Response(
-                {"error": str(e), "detail": traceback.format_exc()}, status=500
-            )
-
-    @action(
-        detail=True,
-        methods=["delete"],
-        url_path="reviews/delete",
-        permission_classes=[IsAuthenticated],
-    )
-    def reviews_delete(self, request, pk=None):
-        build = self.get_object()
-        deleted, _ = build.reviews.filter(user=request.user).delete()
-        if not deleted:
-            return Response({"error": "Відгук не знайдено"}, status=404)
-        return Response(status=204)
-
-    @action(detail=True, methods=["get", "post"], permission_classes=[])
-    def posts(self, request, pk=None):
-        import traceback
-
-        build = self.get_object()
-        ctx = {"request": request}
-        try:
-            if request.method == "GET":
-                qs = (
-                    build.posts.select_related("author")
-                    .prefetch_related("replies__author")
-                    .all()
-                )
-                return Response(BuildPostSerializer(qs, many=True, context=ctx).data)
-            if not request.user.is_authenticated:
-                return Response({"error": "Необхідна авторизація"}, status=401)
-            ser = BuildPostSerializer(data=request.data, context=ctx)
-            ser.is_valid(raise_exception=True)
-            ser.save(build=build, author=request.user)
-            return Response(ser.data, status=201)
-        except Exception as e:
-            return Response(
-                {"error": str(e), "detail": traceback.format_exc()}, status=500
-            )
-
-    @action(
-        detail=True,
-        methods=["patch"],
-        url_path="posts/(?P<post_id>[0-9]+)/edit",
-        permission_classes=[IsAuthenticated],
-    )
-    def posts_edit(self, request, pk=None, post_id=None):
-        build = self.get_object()
-        post = build.posts.filter(pk=post_id).first()
-        if not post:
-            return Response({"error": "Пост не знайдено"}, status=404)
-        is_owner = post.author == request.user
-        is_manager = hasattr(request.user, "profile") and request.user.profile.role in (
-            "manager",
-            "admin",
-        )
-        if not (is_owner or is_manager):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        text = request.data.get("text", "").strip()
-        if not text:
-            return Response({"error": "Текст не може бути порожнім"}, status=400)
-        post.text = text
-        post.save(update_fields=["text", "updated_at"])
-        return Response(BuildPostSerializer(post, context={"request": request}).data)
-
-    @action(
-        detail=True,
-        methods=["post"],
-        url_path="posts/(?P<post_id>[0-9]+)/reply",
-        permission_classes=[IsAuthenticated],
-    )
-    def posts_reply(self, request, pk=None, post_id=None):
-        build = self.get_object()
-        post = build.posts.filter(pk=post_id).first()
-        if not post:
-            return Response({"error": "Пост не знайдено"}, status=404)
-        text = request.data.get("text", "").strip()
-        if not text:
-            return Response({"error": "Текст не може бути порожнім"}, status=400)
-        reply = BuildPostReply.objects.create(post=post, author=request.user, text=text)
-        if post.author != request.user:
-            notify_post_reply(post.author, request.user, build.id, post.id, reply.id, build_title=build.title)
-        return Response(
-            BuildPostReplySerializer(reply, context={"request": request}).data,
-            status=201,
-        )
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
     
-    @action(
-        detail=True,
-        methods=["delete"],
-        url_path="posts/(?P<post_id>[0-9]+)/reply/(?P<reply_id>[0-9]+)",
-        permission_classes=[IsAuthenticated],
-    )
-    def posts_reply_delete(self, request, pk=None, post_id=None, reply_id=None):
-        build = self.get_object()
-        reply = BuildPostReply.objects.filter(pk=reply_id, post__build=build).first()
-        if not reply:
-            return Response({"error": "Відповідь не знайдено"}, status=404)
-        is_owner = reply.author == request.user
-        is_manager = hasattr(request.user, "profile") and request.user.profile.role in (
-            "manager",
-            "admin",
-        )
-        if not (is_owner or is_manager):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        reply.delete()
-        return Response(status=204)
-
-    @action(
-        detail=True,
-        methods=["delete"],
-        url_path="posts/(?P<post_id>[0-9]+)",
-        permission_classes=[IsAuthenticated],
-    )
-    def posts_delete(self, request, pk=None, post_id=None):
-        build = self.get_object()
-        post = build.posts.filter(pk=post_id).first()
-        if not post:
-            return Response({"error": "Пост не знайдено"}, status=404)
-        is_owner = post.author == request.user
-        is_manager = hasattr(request.user, "profile") and request.user.profile.role in (
-            "manager",
-            "admin",
-        )
-        if not (is_owner or is_manager):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        post.delete()
-        return Response(status=204)
-
-    @action(detail=True, methods=["get"], permission_classes=[])
-    def files(self, request, pk=None):
-        import os
-        import zipfile
-
-        build = self.get_object()
-        if not build.source_file and not build.archive_url:
-            return Response({"error": "До збірки не прикріплено архів"}, status=400)
-
-        import tempfile, requests as req_lib
-        archive_path = None
-        try:
-            if build.archive_url:
-                r = req_lib.get(build.archive_url, stream=True, timeout=30)
-                r.raise_for_status()
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-                for chunk in r.iter_content(chunk_size=8192):
-                    tmp.write(chunk)
-                tmp.close()
-                archive_path = tmp.name
-                archive_ext = ".zip"
-            elif build.source_file:
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(build.source_file.name)[1])
-                with build.source_file.open("rb") as src:
-                    for chunk in iter(lambda: src.read(8192), b""):
-                        tmp.write(chunk)
-                tmp.close()
-                archive_path = tmp.name
-                archive_ext = os.path.splitext(archive_path)[1].lower()
-            else:
-                return Response({"error": "Файл не знайдено"}, status=400)
-        except Exception as e:
-            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
-
-        folder = request.query_params.get("folder", "")
-        try:
-            page = max(1, int(request.query_params.get("page", 1)))
-            page_size = min(
-                200, max(10, int(request.query_params.get("page_size", 100)))
-            )
-        except ValueError:
-            page, page_size = 1, 100
-
-        try:
-            if archive_ext == ".7z":
-                try:
-                    import py7zr
-
-                    with py7zr.SevenZipFile(archive_path, mode="r") as z:
-                        all_entries = [
-                            (f.filename, getattr(f, "uncompressed", 0) or 0)
-                            for f in z.list()
-                            if not f.is_directory
-                        ]
-                except ImportError:
-                    return Response({"error": "pip install py7zr"}, status=400)
-            elif archive_ext == ".rar":
-                try:
-                    import rarfile
-
-                    with rarfile.RarFile(archive_path) as z:
-                        all_entries = [
-                            (f.filename, f.file_size)
-                            for f in z.infolist()
-                            if not f.is_dir()
-                        ]
-                except ImportError:
-                    return Response({"error": "pip install rarfile"}, status=400)
-            else:
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    all_entries = [
-                        (i.filename, i.file_size)
-                        for i in zf.infolist()
-                        if not i.is_dir()
-                    ]
-        except zipfile.BadZipFile:
-            return Response({"error": "Архів пошкоджений"}, status=400)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-        all_entries = [(n.replace("\\", "/"), s) for n, s in all_entries]
-
-        dirs_seen = set()
-        dirs_list = []
-        files_list = []
-
-        for name, size in all_entries:
-            if folder:
-                if not name.startswith(folder + "/"):
-                    continue
-                rel = name[len(folder) + 1 :]
-            else:
-                rel = name
-
-            if not rel:
-                continue
-
-            parts = rel.split("/")
-            if len(parts) == 1:
-                files_list.append(
-                    {
-                        "type": "file",
-                        "name": parts[0],
-                        "path": name,
-                        "size": size,
-                        "ext": os.path.splitext(parts[0])[1].lower(),
-                    }
-                )
-            else:
-                dir_name = parts[0]
-                if dir_name not in dirs_seen:
-                    dirs_seen.add(dir_name)
-                    dir_path = (folder + "/" + dir_name) if folder else dir_name
-                    total = sum(
-                        1 for n, _ in all_entries if n.startswith(dir_path + "/")
-                    )
-                    dirs_list.append(
-                        {
-                            "type": "dir",
-                            "name": dir_name,
-                            "path": dir_path,
-                            "count": total,
-                        }
-                    )
-
-        dirs_list.sort(key=lambda x: x["name"].lower())
-        files_list.sort(key=lambda x: x["name"].lower())
-
-        total_files_in_folder = len(files_list)
-        offset = (page - 1) * page_size
-        files_page = files_list[offset : offset + page_size]
-
-        try:
-            return Response(
-                {
-                    "folder": folder,
-                    "total_files": len(all_entries),
-                    "total_in_folder": total_files_in_folder,
-                    "page": page,
-                    "page_size": page_size,
-                    "has_more": (offset + page_size) < total_files_in_folder,
-                    "items": dirs_list + files_page,
-                }
-            )
-        finally:
-            if archive_path and os.path.exists(archive_path):
-                try:
-                    os.unlink(archive_path)
-                except Exception:
-                    pass
-
-    @action(detail=True, methods=["get"], url_path="files/read", permission_classes=[])
-    def files_read(self, request, pk=None):
-        import io
-        import os
-        import zipfile
-
-        READABLE = {
-            ".lua",
-            ".cs",
-            ".js",
-            ".txt",
-            ".cfg",
-            ".ini",
-            ".json",
-            ".xml",
-            ".asi",
-        }
-        MAX_SIZE = 256 * 1024
-        build = self.get_object()
-        file_path = request.query_params.get("path", "")
-        if not file_path:
-            return Response({"error": "path є обовязковим"}, status=400)
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext not in READABLE:
-            return Response(
-                {"error": "Цей тип файлу не підтримується для перегляду"}, status=400
-            )
-        import tempfile, requests as req_lib
-        archive_path = None
-        try:
-            if build.archive_url:
-                r = req_lib.get(build.archive_url, stream=True, timeout=30)
-                r.raise_for_status()
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-                for chunk in r.iter_content(chunk_size=8192):
-                    tmp.write(chunk)
-                tmp.close()
-                archive_path = tmp.name
-            elif build.source_file:
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(build.source_file.name)[1])
-                with build.source_file.open("rb") as src:
-                    for chunk in iter(lambda: src.read(8192), b""):
-                        tmp.write(chunk)
-                tmp.close()
-                archive_path = tmp.name
-            else:
-                return Response({"error": "Файл не знайдено"}, status=404)
-        except Exception as e:
-            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
-        archive_ext = os.path.splitext(archive_path)[1].lower()
-
-        def decode(data):
-            return data.decode("utf-8", errors="replace")
-
-        try:
-            if archive_ext == ".7z":
-                try:
-                    import py7zr
-
-                    with py7zr.SevenZipFile(archive_path, mode="r") as z:
-                        extracted = z.read([file_path])
-                        if file_path not in extracted:
-                            return Response(
-                                {"error": "Файл не знайдено в архіві"}, status=404
-                            )
-                        data = extracted[file_path].read()
-                        if len(data) > MAX_SIZE:
-                            return Response(
-                                {"error": "Файл занадто великий (>256 KB)"}, status=400
-                            )
-                        return Response({"content": decode(data), "ext": ext})
-                except ImportError:
-                    return Response(
-                        {"error": "Встановіть py7zr: pip install py7zr"}, status=400
-                    )
-            elif archive_ext == ".rar":
-                try:
-                    import rarfile
-
-                    with rarfile.RarFile(archive_path) as z:
-                        info = z.getinfo(file_path)
-                        if info.file_size > MAX_SIZE:
-                            return Response(
-                                {"error": "Файл занадто великий (>256 KB)"}, status=400
-                            )
-                        return Response(
-                            {"content": decode(z.read(file_path)), "ext": ext}
-                        )
-                except ImportError:
-                    return Response(
-                        {"error": "Встановіть rarfile: pip install rarfile"}, status=400
-                    )
-            else:
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    info = zf.getinfo(file_path)
-                    if info.file_size > MAX_SIZE:
-                        return Response(
-                            {"error": "Файл занадто великий для перегляду (>256 KB)"},
-                            status=400,
-                        )
-                    return Response({"content": decode(zf.read(file_path)), "ext": ext})
-        except KeyError:
-            return Response({"error": "Файл не знайдено в архіві"}, status=404)
-        except zipfile.BadZipFile:
-            return Response({"error": "Архів пошкоджений"}, status=400)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    @action(detail=True, methods=["get"], permission_classes=[])
-    def similar(self, request, pk=None):
-        build = self.get_object()
-        tags = [t.strip() for t in (build.tags or "").split(",") if t.strip()]
-        if not tags:
-            return Response([])
-        qs = (
-            Build.objects.filter(is_public=True)
-            .exclude(pk=build.pk)
-            .prefetch_related("components", "images")
-            .annotate(avg_rating=Avg("reviews__score"))
-        )
-        scored = []
-        for b in qs:
-            b_tags = {t.strip() for t in (b.tags or "").split(",") if t.strip()}
-            common = len(b_tags & set(tags))
-            if common:
-                scored.append((common, b))
-        scored.sort(key=lambda x: (-x[0], -(x[1].avg_rating or 0)))
-        top = [b for _, b in scored[:6]]
-        return Response(
-            BuildSerializer(top, many=True, context={"request": request}).data
-        )
-    
-    @action(detail=True, methods=["post"], permission_classes=[])
-    def download(self, request, pk=None):
-        Build.objects.filter(pk=pk).update(
-            download_count=models.F("download_count") + 1
-        )
-        count = Build.objects.filter(pk=pk).values_list("download_count", flat=True).first()
-        return Response({"download_count": count})
+    @property
+    def is_premium(self):
+        return self.plan in ("standard", "pro")
 
 
-def _run_sync(task):
-    """Synchronous fallback when background_task is not installed."""
-    from .ai_logic import get_compatibility_analysis
+class TwoFactorToken(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tfa_token")
+    token = models.UUIDField(default=__import__('uuid').uuid4, unique=True)
+    created_at = models.DateTimeField(auto_now=True)
 
-    try:
-        specs = PCSpecs.objects.filter(user=task.user, is_active=True).first()
-        if not specs:
-            task.status = "error"
-            task.error_msg = "PC specs not found"
-            task.save()
-            return
-        result = get_compatibility_analysis(specs, task.build)
-        if "error" in result:
-            task.status = "error"
-            task.error_msg = result["error"]
-        else:
-            task.status = "done"
-            task.result = result
-            AIAnalysisLog.objects.create(
-                user=task.user,
-                build=task.build,
-                specs=specs,
-                verdict=result.get("verdict", ""),
-                predicted_fps=result.get("fps_prediction", ""),
-                risks=result.get("risks", []),
-                recommendations=result.get("recommendations", []),
-                task=task,
-            )
-        task.save()
-    except Exception as e:
-        task.status = "error"
-        task.error_msg = str(e)
-        task.save()
-
-
-class AnalysisTaskView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, task_id):
-        task = get_object_or_404(AnalysisTask, pk=task_id, user=request.user)
-        return Response(AnalysisTaskSerializer(task).data)
-
-    def delete(self, request, task_id):
-        task = get_object_or_404(AnalysisTask, pk=task_id, user=request.user)
-        if task.status in ("done", "error", "cancelled"):
-            return Response({"error": "Задачу вже завершено"}, status=400)
-        task.status = "cancelled"
-        task.save(update_fields=["status", "updated_at"])
-        return Response({"status": "cancelled"})
-
-
-class AnalysisLogView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        logs = AIAnalysisLog.objects.filter(user=request.user).select_related("build")
-        return Response(AIAnalysisLogSerializer(logs, many=True).data)
-
-
-class PCSpecsViewSet(viewsets.ModelViewSet):
-    serializer_class = PCSpecsSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return PCSpecs.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-
-class ProfileView(APIView):
-    permission_classes = [IsAuthenticated]
- 
-    def get(self, request):
-        return Response(
-            ProfileSerializer(request.user.profile, context={"request": request}).data
-        )
- 
-    def patch(self, request):
-        profile = request.user.profile
-        avatar = request.FILES.get("avatar")
-        banner = request.FILES.get("banner")
-        if avatar:
-            profile.avatar = avatar
-        if banner:
-            profile.banner = banner
-        bio = request.data.get("bio")
-        if bio is not None:
-            profile.bio = bio
-        new_username = request.data.get("username", "").strip()
-        if new_username and new_username != request.user.username:
-            if User.objects.filter(username=new_username).exclude(pk=request.user.pk).exists():
-                return Response({"error": "Цей нікнейм вже зайнятий"}, status=400)
-            request.user.username = new_username
-            request.user.save(update_fields=["username"])
-
-        # 2FA — тільки для звичайних юзерів (адміни/менеджери завжди мають 2FA)
-        if profile.role == "user":
-            tfa = request.data.get("two_factor_enabled")
-            if tfa is not None:
-                profile.two_factor_enabled = str(tfa).lower() in ("true", "1")
-
-        # Кастомізація тільки для Pro
-        if profile.plan == "pro":
-            profile_color = request.data.get("profile_color")
-            avatar_frame = request.data.get("avatar_frame")
-            if profile_color is not None:
-                profile.profile_color = profile_color
-            if avatar_frame is not None:
-                profile.avatar_frame = avatar_frame
-
-        profile.save()
-        return Response(ProfileSerializer(profile, context={"request": request}).data)
-    
-class PublicProfileView(APIView):
-    permission_classes = []
- 
-    def get(self, request, username):
-        user = get_object_or_404(User, username=username)
-        return Response(
-            PublicProfileSerializer(user.profile, context={"request": request}).data
-        )
- 
- 
-class PublicProfileBuildsView(APIView):
-    permission_classes = []
- 
-    def get(self, request, username):
-        user = get_object_or_404(User, username=username)
-        builds = Build.objects.filter(author=user, is_public=True).prefetch_related(
-            "images", "reviews"
-        ).order_by("-created_at")
-        return Response(
-            BuildSerializer(builds, many=True, context={"request": request}).data
-        )
- 
- 
-class ProfileMessageView(APIView):
-    permission_classes = []
- 
-    def get(self, request, username):
-        user = get_object_or_404(User, username=username)
-        messages = ProfileMessage.objects.filter(target_user=user).select_related(
-            "author", "author__profile"
-        )
-        return Response(
-            ProfileMessageSerializer(messages, many=True, context={"request": request}).data
-        )
- 
-    def post(self, request, username):
-        if not request.user.is_authenticated:
-            return Response({"error": "Потрібна авторизація"}, status=401)
-        user = get_object_or_404(User, username=username)
-        text = request.data.get("text", "").strip()
-        if not text:
-            return Response({"error": "Повідомлення не може бути порожнім"}, status=400)
-        msg = ProfileMessage.objects.create(
-            author=request.user,
-            target_user=user,
-            text=text,
-        )
-        return Response(
-            ProfileMessageSerializer(msg, context={"request": request}).data,
-            status=201,
-        )
- 
- 
-class ProfileMessageDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
- 
-    def delete(self, request, username, msg_id):
-        user = get_object_or_404(User, username=username)
-        msg = get_object_or_404(ProfileMessage, pk=msg_id, target_user=user)
-        is_owner = msg.author == request.user or user == request.user
-        is_staff_user = is_staff(request.user)
-        if not is_owner and not is_staff_user:
-            return Response({"error": "Недостатньо прав"}, status=403)
-        msg.delete()
-        return Response(status=204)
-
-class BuildSubmissionViewSet(viewsets.ModelViewSet):
-    serializer_class = BuildSubmissionSerializer
-    permission_classes = [IsAuthenticated]
-    http_method_names = ["get", "post", "delete", "head", "options"]
-
-    def get_queryset(self):
-        if is_staff(self.request.user):
-            return BuildSubmission.objects.select_related("submitted_by").all()
-        return BuildSubmission.objects.filter(submitted_by=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        import threading, tempfile, os as _os
-        user = request.user
-        is_premium = getattr(user, 'profile', None) and user.profile.is_premium
-        if not is_premium:
-            active_count = BuildSubmission.objects.filter(
-                submitted_by=user, status="pending"
-            ).count()
-            if active_count >= 1:
-                return Response(
-                    {"error": "Безкоштовні акаунти можуть мати лише 1 активну заявку. "
-                               "Оформіть преміум для необмеженої кількості заявок."},
-                    status=400,
-                )
-
-        # Читаємо файл з request.FILES ДО збереження в B2
-        source_file_obj = request.FILES.get("source_file")
-        if not source_file_obj:
-            return Response({"error": "source_file є обов'язковим"}, status=400)
-
-        file_name = source_file_obj.name
-        suffix = _os.path.splitext(file_name)[1]
-
-        # Зберігаємо у тимчасовий файл на диску Railway
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        try:
-            for chunk in source_file_obj.chunks():
-                tmp.write(chunk)
-            tmp.close()
-            tmp_path = tmp.name
-        except Exception as e:
-            tmp.close()
-            _os.unlink(tmp.name)
-            return Response({"error": f"Помилка читання файлу: {e}"}, status=500)
-
-        # Зберігаємо заявку БЕЗ source_file (не йде в B2)
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        sub = serializer.save(
-            submitted_by=user,
-            upload_status="uploading",
-            source_file=None,
-        )
-
-        def _upload_submission():
-            from django.db import connection
-            try:
-                from .archive_utils import upload_submission_to_archive_from_path
-                identifier, archive_url = upload_submission_to_archive_from_path(
-                    sub, tmp_path, file_name
-                )
-                from django.utils import timezone
-                connection.ensure_connection()
-                BuildSubmission.objects.filter(pk=sub.pk).update(
-                    archive_identifier=identifier,
-                    archive_url=archive_url,
-                    upload_status="done",
-                    upload_completed_at=timezone.now(),
-                )
-                logger.info(f"[Submission] Завантажено на Archive.org: {archive_url}")
-            except Exception as e:
-                try:
-                    connection.ensure_connection()
-                    BuildSubmission.objects.filter(pk=sub.pk).update(upload_status="failed")
-                except Exception:
-                    pass
-                logger.error(f"[Submission] Помилка завантаження: {e}")
-            finally:
-                connection.close()
-                if _os.path.exists(tmp_path):
-                    _os.unlink(tmp_path)
-
-        threading.Thread(target=_upload_submission, daemon=True).start()
-
-        return Response(serializer.data, status=201)
-
-    def destroy(self, request, *args, **kwargs):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        return super().destroy(request, *args, **kwargs)
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def approve(self, request, pk=None):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        sub = self.get_object()
-        if sub.status != "pending":
-            return Response({"error": "Заявка вже оброблена"}, status=400)
-
-        if sub.upload_status != "done" or not sub.archive_url:
-            return Response(
-                {"error": "Файл ще завантажується на Archive.org. Зачекайте і спробуйте знову."},
-                status=400,
-            )
+    def is_valid(self):
         from django.utils import timezone
         from datetime import timedelta
-        if sub.upload_completed_at and timezone.now() < sub.upload_completed_at + timedelta(minutes=5):
-            wait_sec = int((sub.upload_completed_at + timedelta(minutes=5) - timezone.now()).total_seconds())
-            return Response(
-                {"error": f"Файл щойно завантажився. Зачекайте ще {wait_sec} секунд поки Archive.org його обробить."},
-                status=400,
-            )
+        return timezone.now() < self.created_at + timedelta(minutes=3)
 
-        build = Build.objects.create(
-            title=sub.title,
-            description=sub.description,
-            build_type=sub.build_type,
-            tags=sub.tags,
-            video_url=sub.video_url or "",
-            author=sub.submitted_by,
-            source_file="",
-            archive_url=sub.archive_url,
-            archive_identifier=sub.archive_identifier,
-            is_public=True,
-        )
+    def is_expired(self):
+        return not self.is_valid()
 
-        if sub.cover_image:
-            from django.core.files.base import ContentFile
-            import requests as req_lib
-            import os as _os
-            import os
-            try:
-                img_data = None
-                # Будуємо URL через S3 endpoint напряму
-                b2_endpoint = _os.getenv("B2_ENDPOINT_URL", "").rstrip("/")
-                b2_bucket = _os.getenv("B2_BUCKET_NAME", "")
-                if b2_endpoint and b2_bucket:
-                    img_url = f"{b2_endpoint}/{b2_bucket}/{sub.cover_image.name}"
-                else:
-                    img_url = sub.cover_image.url
-                # Підписаний запит через boto3
-                try:
-                    import boto3
-                    s3 = boto3.client(
-                        "s3",
-                        endpoint_url=b2_endpoint,
-                        aws_access_key_id=_os.getenv("B2_ACCESS_KEY_ID"),
-                        aws_secret_access_key=_os.getenv("B2_SECRET_ACCESS_KEY"),
-                    )
-                    signed_url = s3.generate_presigned_url(
-                        "get_object",
-                        Params={"Bucket": b2_bucket, "Key": sub.cover_image.name},
-                        ExpiresIn=300,
-                    )
-                    r = req_lib.get(signed_url, timeout=30)
-                    if r.status_code == 200:
-                        img_data = r.content
-                except Exception as e:
-                    logger.warning(f"[Approve] Signed URL failed: {e}")
-                    # Fallback — пробуємо публічний URL
-                    try:
-                        r = req_lib.get(img_url, timeout=30)
-                        if r.status_code == 200:
-                            img_data = r.content
-                    except Exception:
-                        pass
-                if img_data:
-                    img_obj = BuildImage(build=build, is_cover=True)
-                    img_obj.image.save(
-                        os.path.basename(sub.cover_image.name),
-                        ContentFile(img_data),
-                        save=True,
-                    )
-                    logger.info(f"[Approve] Обкладинку скопійовано для submission {sub.id}")
-                else:
-                    logger.warning(f"[Approve] Не вдалося скопіювати обкладинку для submission {sub.id}")
-            except Exception as img_err:
-                logger.warning(f"[Approve] Помилка обкладинки: {img_err}")
-
-        sub.status = "approved"
-        sub.reviewed_by = request.user
-        sub.published_build = build
-        sub.save()
-        notify_submission_status(sub.submitted_by, sub.title, "approved", sub.id, build_id=build.id)
-
-        # Archive.org item вже публічний — просто оновлюємо Build
-        Build.objects.filter(pk=build.pk).update(
-            archive_url=sub.archive_url,
-            archive_identifier=sub.archive_identifier,
-        )
-
-        return Response(
-            {
-                "status": "approved",
-                "build_id": build.id,
-                "archive_url": sub.archive_url,
-            }
-        )
-
-    @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
-    def files(self, request, pk=None):
-        import os
-        import zipfile
-
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        sub = self.get_object()
-        if not sub.source_file:
-            return Response({"error": "Файл не знайдено"}, status=400)
-        import tempfile
-        try:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(sub.source_file.name)[1])
-            with sub.source_file.open("rb") as src:
-                for chunk in iter(lambda: src.read(8192), b""):
-                    tmp.write(chunk)
-            tmp.close()
-            archive_path = tmp.name
-        except Exception as e:
-            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
-        archive_ext = os.path.splitext(archive_path)[1].lower()
-        folder = request.query_params.get("folder", "")
-        try:
-            page = max(1, int(request.query_params.get("page", 1)))
-            page_size = min(
-                200, max(10, int(request.query_params.get("page_size", 100)))
-            )
-        except ValueError:
-            page, page_size = 1, 100
-        try:
-            if archive_ext == ".7z":
-                import py7zr
-
-                with py7zr.SevenZipFile(archive_path, mode="r") as z:
-                    all_entries = [
-                        (f.filename, getattr(f, "uncompressed", 0) or 0)
-                        for f in z.list()
-                        if not f.is_directory
-                    ]
-            elif archive_ext == ".rar":
-                import rarfile
-
-                with rarfile.RarFile(archive_path) as z:
-                    all_entries = [
-                        (f.filename, f.file_size)
-                        for f in z.infolist()
-                        if not f.is_dir()
-                    ]
-            else:
-                with zipfile.ZipFile(archive_path, "r") as zf:
-                    all_entries = [
-                        (i.filename, i.file_size)
-                        for i in zf.infolist()
-                        if not i.is_dir()
-                    ]
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-        all_entries = [(n.replace("\\", "/"), s) for n, s in all_entries]
-        dirs_seen = set()
-        dirs_list = []
-        files_list = []
-        for name, size in all_entries:
-            rel = name[len(folder) + 1 :] if folder else name
-            if folder and not name.startswith(folder + "/"):
-                continue
-            if not rel:
-                continue
-            parts = rel.split("/")
-            if len(parts) == 1:
-                files_list.append(
-                    {
-                        "type": "file",
-                        "name": parts[0],
-                        "path": name,
-                        "size": size,
-                        "ext": os.path.splitext(parts[0])[1].lower(),
-                    }
-                )
-            else:
-                dir_name = parts[0]
-                if dir_name not in dirs_seen:
-                    dirs_seen.add(dir_name)
-                    dir_path = (folder + "/" + dir_name) if folder else dir_name
-                    total = sum(
-                        1 for n, _ in all_entries if n.startswith(dir_path + "/")
-                    )
-                    dirs_list.append(
-                        {
-                            "type": "dir",
-                            "name": dir_name,
-                            "path": dir_path,
-                            "count": total,
-                        }
-                    )
-        dirs_list.sort(key=lambda x: x["name"].lower())
-        files_list.sort(key=lambda x: x["name"].lower())
-        offset = (page - 1) * page_size
-        return Response(
-            {
-                "folder": folder,
-                "total_files": len(all_entries),
-                "total_in_folder": len(files_list),
-                "page": page,
-                "page_size": page_size,
-                "has_more": (offset + page_size) < len(files_list),
-                "items": dirs_list + files_list[offset : offset + page_size],
-            }
-        )
-
-    @action(detail=True, methods=["get"], url_path="files/read", permission_classes=[])
-    def files_read(self, request, pk=None):
-        import os
-        import zipfile
-
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        READABLE = {
-            ".lua",
-            ".cs",
-            ".js",
-            ".txt",
-            ".cfg",
-            ".ini",
-            ".json",
-            ".xml",
-            ".asi",
-        }
-        MAX_SIZE = 256 * 1024
-        sub = self.get_object()
-        file_path = request.query_params.get("path", "")
-        if not file_path:
-            return Response({"error": "path є обовязковим"}, status=400)
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext not in READABLE:
-            return Response({"error": "Тип файлу не підтримується"}, status=400)
-        import tempfile
-        try:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(sub.source_file.name)[1])
-            with sub.source_file.open("rb") as src:
-                for chunk in iter(lambda: src.read(8192), b""):
-                    tmp.write(chunk)
-            tmp.close()
-            archive_path = tmp.name
-        except Exception as e:
-            return Response({"error": f"Не вдалося завантажити файл: {e}"}, status=400)
-        try:
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                info = zf.getinfo(file_path)
-                if info.file_size > MAX_SIZE:
-                    return Response(
-                        {"error": "Файл занадто великий (>256 KB)"}, status=400
-                    )
-                return Response(
-                    {
-                        "content": zf.read(file_path).decode("utf-8", errors="replace"),
-                        "ext": ext,
-                    }
-                )
-        except KeyError:
-            return Response({"error": "Файл не знайдено в архіві"}, status=404)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-        finally:
-            if archive_path and os.path.exists(archive_path):
-                try:
-                    os.unlink(archive_path)
-                except Exception:
-                    pass
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def reject(self, request, pk=None):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        sub = self.get_object()
-        reason = request.data.get("reason", "").strip()
-        if not reason:
-            return Response({"error": "Вкажіть причину відхилення"}, status=400)
-        sub.status = "rejected"
-        sub.rejection_reason = reason
-        sub.reviewed_by = request.user
-        sub.save()
-        notify_submission_status(sub.submitted_by, sub.title, "rejected", sub.id, sub.rejection_reason)
-
-        # Видаляємо з Archive.org у фоні якщо вже завантажено
-        if sub.archive_identifier:
-            import threading
-            def _delete():
-                try:
-                    from .archive_utils import delete_from_archive
-                    delete_from_archive(sub.archive_identifier)
-                except Exception as e:
-                    logger.error(f"[Archive.org] Помилка видалення при відхиленні: {e}")
-            threading.Thread(target=_delete, daemon=True).start()
-
-        return Response({"status": "rejected"})
+    def __str__(self):
+        return f"2FA token for {self.user.username}"
 
 
-class SupportTicketViewSet(viewsets.ModelViewSet):
-    serializer_class = SupportTicketSerializer
-    permission_classes = [IsAuthenticated]
-    http_method_names = ["get", "post", "delete", "head", "options"]
-
-    def get_serializer_context(self):
-        ctx = super().get_serializer_context()
-        ctx["request"] = self.request
-        return ctx
-
-    def get_queryset(self):
-        qs = SupportTicket.objects.prefetch_related(
-            "screenshots", "replies__author__profile"
-        )
-        if is_staff(self.request.user):
-            return qs.all()
-        return qs.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        ticket = serializer.save(user=self.request.user)
-        for key, f in self.request.FILES.items():
-            if key.startswith("screenshot"):
-                TicketScreenshot.objects.create(ticket=ticket, image=f)
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def reply(self, request, pk=None):
-        ticket = self.get_object()
-        is_owner = ticket.user == request.user
-        if not is_staff(request.user) and not is_owner:
-            return Response({'error': 'Недостатньо прав'}, status=403)
-        if ticket.status == 'closed':
-            return Response({'error': 'Звернення закрито'}, status=400)
-        message = request.data.get('message', '').strip()
-        image = request.FILES.get('image')
-        if not message and not image:
-            return Response({'error': 'Повідомлення або зображення є обов\'язковим'}, status=400)
-        reply = TicketReply.objects.create(
-            ticket=ticket, author=request.user, message=message, image=image
-        )
-        if ticket.user != request.user:
-            notify_ticket_reply(ticket.user, request.user, ticket.id)
-        if is_staff(request.user) and ticket.status == 'open':
-            ticket.status = 'in_progress'
-            ticket.save(update_fields=['status'])
-        return Response(
-            TicketReplySerializer(reply, context={'request': request}).data,
-            status=201
-        )
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def reopen(self, request, pk=None):
-        ticket = self.get_object()
-        if not is_staff(request.user) and ticket.user != request.user:
-            return Response({"error": "Недостатньо прав"}, status=403)
-        if ticket.status != "closed":
-            return Response({"error": "Звернення не закрито"}, status=400)
-        ticket.status = "open"
-        ticket.save(update_fields=["status"])
-        return Response({"status": "open"})
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def close(self, request, pk=None):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        ticket = self.get_object()
-        ticket.status = "closed"
-        ticket.save(update_fields=["status"])
-        return Response({"status": "closed"})
-
-    @action(detail=True, methods=["delete"], permission_classes=[IsAuthenticated])
-    def delete_ticket(self, request, pk=None):
-        ticket = self.get_object()
-        if not is_staff(request.user) and ticket.user != request.user:
-            return Response({"error": "Недостатньо прав"}, status=403)
-        ticket.delete()
-        return Response(status=204)
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.get_or_create(user=instance)
 
 
+class PCSpecs(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_specs")
+    label = models.CharField(max_length=100, default="Мій ПК")
+    pc_name = models.CharField(max_length=255, blank=True, verbose_name="Назва ПК")
+    cpu_model = models.CharField(max_length=255, verbose_name="Процесор")
+    gpu_model = models.CharField(max_length=255, verbose_name="Відеокарта")
+    ram_gb = models.IntegerField(default=0, verbose_name="ОЗП (ГБ)")
+    ram_mhz = models.IntegerField(null=True, blank=True, verbose_name="Швидкість ОЗП (МГц)")
+    is_active = models.BooleanField(default=True)
 
-class AdminBuildViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_class(self):
-        return BuildSerializer
-
-    def get_queryset(self):
-        if not is_staff(self.request.user):
-            return Build.objects.none()
-        return Build.objects.prefetch_related("components", "images").all()
-
-    def get_serializer_context(self):
-        return {"request": self.request}
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def restore_archive(self, request, pk=None):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        build = self.get_object()
-        if not build.archive_identifier:
-            return Response(
-                {"error": "Збірка не має Archive.org identifier"}, status=400
-            )
-        try:
-            from .archive_utils import unhide_from_archive
-
-            unhide_from_archive(build.archive_identifier)
-            return Response({"status": "restored", "archive_url": build.archive_url})
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    def perform_destroy(self, instance):
-        if not is_staff(self.request.user):
-            raise PermissionError("Недостатньо прав")
-        if instance.archive_identifier:
-            try:
-                from .archive_utils import hide_from_archive
-
-                hide_from_archive(instance.archive_identifier)
-            except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).error(
-                    f"[Archive.org] Помилка приховування: {e}"
-                )
-        instance.delete()
+    def __str__(self):
+        return f"{self.label} ({self.gpu_model})"
 
 
-class AdminUserListView(APIView):
-    permission_classes = [IsAuthenticated]
+class Component(models.Model):
+    CATEGORIES = [
+        ("script", "Скрипт"),
+        ("texture", "Текстура"),
+        ("audio", "Аудіо"),
+        ("graphic", "Графіка"),
+    ]
+    COMPLEXITY = [
+        ("low", "Низька"),
+        ("med", "Середня"),
+        ("high", "Висока"),
+    ]
+    name = models.CharField(max_length=100)
+    category = models.CharField(max_length=20, choices=CATEGORIES)
+    complexity_level = models.CharField(
+        max_length=10, choices=COMPLEXITY, default="low"
+    )
+    description = models.TextField(blank=True)
+    conflicts_with = models.ManyToManyField("self", symmetrical=True, blank=True)
 
-    def get(self, request):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        users = User.objects.select_related("profile").all().order_by("-date_joined")
-        return Response(
-            UserAdminSerializer(users, many=True, context={"request": request}).data
-        )
-
-
-class AdminUserDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, user_id):
-        if not is_admin(request.user):
-            return Response({"error": "Тільки адміністратори"}, status=403)
-        user = get_object_or_404(User, pk=user_id)
-
-        plan = request.data.get("plan")
-        plan_expires_at = request.data.get("plan_expires_at")
-        ai_credits = request.data.get("ai_credits")
-        role = request.data.get("role")
-
-        profile = user.profile
-        if plan is not None:
-            if plan not in ("free", "standard", "pro"):
-                return Response({"error": "Невірний план"}, status=400)
-            profile.plan = plan
-            if plan == "standard":
-                profile.av_checks_left = max(profile.av_checks_left, 1)
-            elif plan == "pro":
-                profile.av_checks_left = max(profile.av_checks_left, 5)
-            elif plan == "free":
-                profile.av_checks_left = 0
-        if plan_expires_at is not None:
-            from django.utils.dateparse import parse_datetime
-            profile.plan_expires_at = parse_datetime(plan_expires_at)
-        if ai_credits is not None:
-            profile.ai_credits = int(ai_credits)
-        if role is not None:
-            profile.role = role
-        profile.save()
-
-        return Response(UserAdminSerializer(user, context={"request": request}).data)
-
-    def delete(self, request, user_id):
-        if not is_admin(request.user):
-            return Response({"error": "Тільки адміністратори"}, status=403)
-        if request.user.id == user_id:
-            return Response({"error": "Не можна видалити власний акаунт"}, status=400)
-        user = get_object_or_404(User, pk=user_id)
-        user.delete()
-        return Response(status=204)
+    def __str__(self):
+        return self.name
 
 
-class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    permission_classes = (AllowAny,)
-    serializer_class = RegisterSerializer
- 
-    def perform_create(self, serializer):
-        import threading
-        from django.conf import settings
-        from django.contrib.auth.tokens import default_token_generator
-        from django.template.loader import render_to_string
-        from django.utils.encoding import force_bytes
-        from django.utils.http import urlsafe_base64_encode
+class Build(models.Model):
+    TYPE_CHOICES = [
+        ("build", "Збірка"),
+        ("script", "Скрипт"),
+    ]
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    build_type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default="build", verbose_name="Тип"
+    )
+    author = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="created_builds"
+    )
+    components = models.ManyToManyField(Component, related_name="builds", blank=True)
+    video_url = models.URLField(blank=True, null=True)
+    tags = models.CharField(
+        max_length=255, blank=True, help_text="Через кому: Low-PC, Winter, Realistic"
+    )
+    source_file = models.FileField(upload_to="build_archives/")
+    torrent_file = models.FileField(upload_to="torrents/", null=True, blank=True)
+    magnet_link = models.TextField(blank=True, null=True)
+    info_hash = models.CharField(max_length=64, blank=True, null=True)
+    is_public = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    archive_url = models.URLField(blank=True, null=True)
+    archive_identifier = models.CharField(max_length=255, blank=True, null=True)
+    download_count = models.PositiveIntegerField(default=0, verbose_name="Завантажень")
+    is_premium_only = models.BooleanField(default=False, verbose_name="Тільки для преміум")
 
-        user = serializer.save()
-        user.is_active = False
-        user.save(update_fields=["is_active"])
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
 
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-        confirm_url = f"{frontend_url}/confirm-email/{uid}/{token}/"
+    def __str__(self):
+        return self.title
 
-        html = render_to_string(
-            "registration/vortex_email_confirm.html",
-            {"username": user.username, "confirm_url": confirm_url},
-        )
 
-        def send_confirmation():
-            try:
-                import resend
-                resend.api_key = getattr(settings, "RESEND_API_KEY", "")
-                resend.Emails.send({
-                    "from": "noreply@vortex-arizona.online",
-                    "to": user.email,
-                    "subject": "Vortex — підтвердження email",
-                    "html": html,
-                })
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"[Email] Помилка: {e}")
+class BuildImage(models.Model):
+    build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to="build_gallery/")
+    is_cover = models.BooleanField(default=False)
 
-        threading.Thread(target=send_confirmation, daemon=True).start()
 
-class EmailConfirmView(APIView):
-    """GET /api/auth/confirm-email/<uid>/<token>/"""
-    permission_classes = (AllowAny,)
- 
-    def get(self, request, uid, token):
-        from django.contrib.auth.tokens import default_token_generator
-        from django.utils.http import urlsafe_base64_decode
-        from django.utils.encoding import force_str
- 
-        try:
-            user_id = force_str(urlsafe_base64_decode(uid))
-            user = User.objects.get(pk=user_id)
-        except (User.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Невірне посилання"}, status=400)
- 
-        if user.is_active:
-            return Response({"detail": "Email вже підтверджено"})
- 
-        if not default_token_generator.check_token(user, token):
-            return Response({"error": "Посилання недійсне або закінчився термін дії"}, status=400)
- 
-        user.is_active = True
-        user.save(update_fields=["is_active"])
- 
-        return Response({"detail": "Email підтверджено. Тепер ви можете увійти."})
+class Favorite(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
+    build = models.ForeignKey(
+        Build, on_delete=models.CASCADE, related_name="favorited_by"
+    )
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "build")
+
+    def __str__(self):
+        return f"{self.user.username} → {self.build.title}"
+
+
+class BuildSubmission(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "На розгляді"),
+        ("approved", "Схвалено"),
+        ("rejected", "Відхилено"),
+    ]
+    TYPE_CHOICES = [
+        ("build", "Збірка"),
+        ("script", "Скрипт"),
+    ]
+
+    submitted_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="submissions"
+    )
+    title = models.CharField(max_length=255, verbose_name="Назва")
+    description = models.TextField(blank=True, verbose_name="Опис")
+    build_type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default="build", verbose_name="Тип"
+    )
+    tags = models.CharField(
+        max_length=255, blank=True, help_text="Через кому: Low-PC, Winter"
+    )
+    video_url = models.URLField(blank=True, null=True, verbose_name="YouTube посилання")
+    source_file = models.FileField(
+        upload_to="submission_archives/", verbose_name="Архів збірки",
+        null=True, blank=True,
+    )
+    cover_image = models.ImageField(
+        upload_to="submission_covers/", null=True, blank=True, verbose_name="Обкладинка"
+    )
+    # Archive.org поля — заповнюються після завантаження у фоні
+    archive_identifier = models.CharField(max_length=255, blank=True, null=True, verbose_name="Archive.org ID")
+    archive_url = models.URLField(blank=True, null=True, verbose_name="Archive.org URL")
+    UPLOAD_STATUS_CHOICES = [
+        ("pending", "Очікує завантаження"),
+        ("uploading", "Завантажується"),
+        ("done", "Завантажено"),
+        ("failed", "Помилка"),
+    ]
+    upload_status = models.CharField(max_length=10, choices=UPLOAD_STATUS_CHOICES, default="pending", verbose_name="Статус завантаження")
+    upload_completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Час завершення завантаження")
+
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default="pending", verbose_name="Статус"
+    )
+    rejection_reason = models.TextField(blank=True, verbose_name="Причина відхилення")
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_submissions",
+        verbose_name="Перевірив",
+    )
+    published_build = models.OneToOneField(
+        Build,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="from_submission",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Заявка на публікацію"
+        verbose_name_plural = "Заявки на публікацію"
+
+    def __str__(self):
+        return f"[{self.get_status_display()}] {self.title} від {self.submitted_by.username}"
+
+
+class AnalysisTask(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Очікує"),
+        ("running", "Виконується"),
+        ("done", "Готово"),
+        ("error", "Помилка"),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="analysis_tasks"
+    )
+    build = models.ForeignKey(
+        Build, on_delete=models.CASCADE, related_name="analysis_tasks"
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    result = models.JSONField(null=True, blank=True)
+    error_msg = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Task #{self.pk} — {self.user.username} / {self.build.title} [{self.status}]"
+
+
+class AIAnalysisLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    build = models.ForeignKey(Build, on_delete=models.CASCADE)
+    specs = models.ForeignKey(PCSpecs, on_delete=models.SET_NULL, null=True)
+    verdict = models.TextField()
+    predicted_fps = models.CharField(max_length=255)
+    risks = models.JSONField(default=list, blank=True)
+    recommendations = models.JSONField(default=list, blank=True)
+    task = models.OneToOneField(
+        AnalysisTask,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="log",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} → {self.build.title} ({self.verdict})"
+
+
+class SupportTicket(models.Model):
+    STATUS_CHOICES = [
+        ("open", "Відкрито"),
+        ("in_progress", "В обробці"),
+        ("closed", "Закрито"),
+    ]
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tickets",
+        verbose_name="Користувач",
+    )
+    subject = models.CharField(max_length=255, verbose_name="Тема")
+    message = models.TextField(verbose_name="Повідомлення")
+    status = models.CharField(
+        max_length=15, choices=STATUS_CHOICES, default="open", verbose_name="Статус"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Звернення"
+        verbose_name_plural = "Звернення"
+
+    def __str__(self):
+        return f"[{self.get_status_display()}] {self.subject} — {self.user.username}"
+
+
+class TicketScreenshot(models.Model):
+    ticket = models.ForeignKey(
+        SupportTicket, on_delete=models.CASCADE, related_name="screenshots"
+    )
+    image = models.ImageField(upload_to="support_screenshots/")
+
+
+class TicketReply(models.Model):
+    ticket = models.ForeignKey(SupportTicket, on_delete=models.CASCADE, related_name='replies')
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    message = models.TextField(blank=True)
+    image = models.ImageField(upload_to='support_reply_images/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+class BuildReview(models.Model):
+    build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="reviews")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="build_reviews"
+    )
+    score = models.PositiveSmallIntegerField()
+    text = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("build", "user")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} → {self.build.title} ({self.score}★)"
+
+
+class BuildPost(models.Model):
+    build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="posts")
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="build_posts"
+    )
+    text = models.TextField()
+    is_pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_pinned", "-created_at"]
+
+    def __str__(self):
+        return f"{self.author.username} on {self.build.title}"
+
+
+class BuildPostReply(models.Model):
+    post = models.ForeignKey(
+        BuildPost, on_delete=models.CASCADE, related_name="replies"
+    )
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="build_post_replies"
+    )
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.author.username} reply on post {self.post.id}"
+
+
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ("post_reply", "Відповідь на пост"),
+        ("ticket_reply", "Відповідь у зверненні"),
+        ("ai_done", "Результат AI-аналізу"),
+        ("moderation_warning", "Попередження модерації"),
+        ("submission_status", "Зміна статусу заявки"),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    is_read = models.BooleanField(default=False)
+    actor_name = models.CharField(max_length=150, blank=True)
+    title = models.CharField(max_length=255, blank=True)
+    body = models.TextField(blank=True)
+    link_type = models.CharField(max_length=50, blank=True)
+    link_params = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Сповіщення"
+        verbose_name_plural = "Сповіщення"
+
+    def __str__(self):
+        return f"[{self.type}] {self.user.username}: {self.body[:60]}"
     
+class UserWarning(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Активне"),
+        ("expired", "Прострочене"),
+        ("executed", "Виконане"),
+    ]
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="warnings"
+    )
+    issued_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="issued_warnings"
+    )
+    reason = models.TextField(verbose_name="Причина порушення")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
 
-class PasswordResetRequestView(APIView):
-    """POST /api/auth/password-reset/"""
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Попередження"
+        verbose_name_plural = "Попередження"
 
-    permission_classes = (AllowAny,)
+    def __str__(self):
+        return f"Warning({self.user.username}, {self.status})"
 
-    def post(self, request):
-        from django.conf import settings
-        from django.contrib.auth.tokens import default_token_generator
-        from django.template.loader import render_to_string
-        from django.utils.encoding import force_bytes
-        from django.utils.http import urlsafe_base64_encode
-
-        email = request.data.get("email", "").strip()
-        if not email:
-            return Response({"error": "Email є обов'язковим"}, status=400)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response(
-                {"detail": "Якщо такий email зареєстровано - лист надіслано."}
-            )
-
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-        reset_url = f"{frontend_url}/reset-password/{uid}/{token}/"
-
-        html = render_to_string(
-            "registration/vortex_password_reset_email.html",
-            {
-                "user": user,
-                "reset_url": reset_url,
-                "uid": uid,
-                "token": token,
-                "protocol": "http",
-                "domain": "localhost:3000",
-            },
-        )
-
-        def send_reset():
-            try:
-                import resend
-                resend.api_key = getattr(settings, "RESEND_API_KEY", "")
-                resend.Emails.send({
-                    "from": "noreply@vortex-arizona.online",
-                    "to": email,
-                    "subject": "Vortex — відновлення паролю",
-                    "html": html,
-                })
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"[Email] Помилка: {e}")
-        import threading
-        threading.Thread(target=send_reset, daemon=True).start()
-        return Response({"detail": "Якщо такий email зареєстровано - лист надіслано."})
+    def refresh_status(self):
+        from django.utils import timezone
+        if self.status == "active" and timezone.now() > self.expires_at:
+            self.status = "expired"
+            self.save(update_fields=["status"])
 
 
-class PasswordResetConfirmView(APIView):
-    """POST /api/auth/password-reset-confirm/"""
+class UserBlock(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="block"
+    )
+    blocked_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="issued_blocks"
+    )
+    reason = models.TextField(verbose_name="Причина блокування")
+    is_permanent = models.BooleanField(default=False)
+    blocked_until = models.DateTimeField(null=True, blank=True)
+    warning = models.ForeignKey(
+        UserWarning, on_delete=models.SET_NULL, null=True, blank=True, related_name="block"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    permission_classes = (AllowAny,)
+    class Meta:
+        verbose_name = "Блокування"
+        verbose_name_plural = "Блокування"
 
-    def post(self, request):
-        from django.contrib.auth.tokens import default_token_generator
-        from django.utils.http import urlsafe_base64_decode
+    def __str__(self):
+        return f"Block({self.user.username}, permanent={self.is_permanent})"
 
-        uidb64 = request.data.get("uid", "")
-        token = request.data.get("token", "")
-        password = request.data.get("password", "")
-
-        if not all([uidb64, token, password]):
-            return Response(
-                {"error": "uid, token та password є обов'язковими"}, status=400
-            )
-
-        try:
-            uid = urlsafe_base64_decode(uidb64).decode()
-            user = User.objects.get(pk=uid)
-        except (User.DoesNotExist, ValueError, OverflowError):
-            return Response({"error": "Невалідне посилання"}, status=400)
-
-        if not default_token_generator.check_token(user, token):
-            return Response({"error": "Токен недійсний або прострочений"}, status=400)
-
-        if len(password) < 8:
-            return Response(
-                {"error": "Пароль має бути не менше 8 символів"}, status=400
-            )
-
-        user.set_password(password)
-        user.save()
-        return Response({"detail": "Пароль успішно змінено. Тепер увійдіть."})
-
-class NotificationListView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        qs = Notification.objects.filter(user=request.user)
-        serializer = NotificationSerializer(qs, many=True)
-        unread_count = qs.filter(is_read=False).count()
-        return Response({"results": serializer.data, "unread_count": unread_count})
+    def is_active(self):
+        from django.utils import timezone
+        if self.is_permanent:
+            return True
+        return self.blocked_until and timezone.now() < self.blocked_until
 
 
-class NotificationMarkReadView(APIView):
-    permission_classes = [IsAuthenticated]
+class AppealChat(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="appeal"
+    )
+    block = models.ForeignKey(
+        UserBlock, on_delete=models.CASCADE, related_name="appeal"
+    )
+    is_closed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    def post(self, request, pk):
-        try:
-            n = Notification.objects.get(pk=pk, user=request.user)
-        except Notification.DoesNotExist:
-            return Response(status=404)
-        n.is_read = True
-        n.save(update_fields=["is_read"])
-        return Response({"ok": True})
+    class Meta:
+        verbose_name = "Апеляція"
+        verbose_name_plural = "Апеляції"
 
-
-class NotificationMarkAllReadView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
-        return Response({"ok": True})
+    def __str__(self):
+        return f"Appeal({self.user.username})"
 
 
-class NotificationDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
+class AppealMessage(models.Model):
+    chat = models.ForeignKey(AppealChat, on_delete=models.CASCADE, related_name="messages")
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    def delete(self, request, pk):
-        try:
-            n = Notification.objects.get(pk=pk, user=request.user)
-        except Notification.DoesNotExist:
-            return Response(status=404)
-        n.delete()
-        return Response(status=204)
+    class Meta:
+        ordering = ["created_at"]
 
+    def __str__(self):
+        return f"AppealMsg({self.author.username})"
 
-class NotificationDeleteAllView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request):
-        Notification.objects.filter(user=request.user).delete()
-        return Response(status=204)
     
-
-class AdminWarnUserView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, user_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        from django.utils import timezone
-        from datetime import timedelta
-        user = get_object_or_404(User, pk=user_id)
-        if user == request.user:
-            return Response({"error": "Не можна попередити самого себе"}, status=400)
-        reason = request.data.get("reason", "").strip()
-        if not reason:
-            return Response({"error": "Вкажіть причину"}, status=400)
-        warning = UserWarning.objects.create(
-            user=user,
-            issued_by=request.user,
-            reason=reason,
-            expires_at=timezone.now() + timedelta(hours=24),
-        )
-        from .notify import notify_moderation_warning
-        notify_moderation_warning(user, request.user, reason)
-        return Response(UserWarningSerializer(warning).data, status=201)
-
-
-class AdminBlockUserView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, user_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        from django.utils import timezone
-        from datetime import timedelta
-        user = get_object_or_404(User, pk=user_id)
-        if user == request.user:
-            return Response({"error": "Не можна заблокувати самого себе"}, status=400)
-        reason = request.data.get("reason", "").strip()
-        duration = request.data.get("duration")
-        warning_id = request.data.get("warning_id")
-        if not reason:
-            return Response({"error": "Вкажіть причину"}, status=400)
-
-        DURATIONS = {"1d": 1, "3d": 3, "7d": 7, "30d": 30}
-        is_permanent = duration == "permanent"
-        blocked_until = None
-        if not is_permanent:
-            days = DURATIONS.get(duration)
-            if not days:
-                return Response({"error": "Невірний термін блокування"}, status=400)
-            blocked_until = timezone.now() + timedelta(days=days)
-
-        UserBlock.objects.filter(user=user).delete()
-        warning = None
-        if warning_id:
-            try:
-                warning = UserWarning.objects.get(pk=warning_id, user=user)
-                warning.status = "executed"
-                warning.save(update_fields=["status"])
-            except UserWarning.DoesNotExist:
-                pass
-
-        block = UserBlock.objects.create(
-            user=user,
-            blocked_by=request.user,
-            reason=reason,
-            is_permanent=is_permanent,
-            blocked_until=blocked_until,
-            warning=warning,
-        )
-        if get_role(request.user) == 'manager':
-            admins = User.objects.filter(profile__role='admin')
-            for admin in admins:
-                Notification.objects.create(
-                    user=admin,
-                    type="moderation_warning",
-                    body=f"Менеджер {request.user.username} заблокував користувача {user.username}. Причина: {reason}",
-                    link_type="",
-                    link_params={"blocked_user_id": user.id},
-                )
-        return Response(UserBlockSerializer(block).data, status=201)
-
-
-class AdminUnblockUserView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, user_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        user = get_object_or_404(User, pk=user_id)
-        UserBlock.objects.filter(user=user).delete()
-        try:
-            chat = user.appeal
-            chat.is_closed = True
-            chat.save(update_fields=["is_closed"])
-            Notification.objects.create(
-                user=user,
-                type="moderation_warning",
-                body="Вашу апеляцію розглянуто. Блокування знято.",
-                link_type="",
-                link_params={},
-            )
-        except Exception:
-            pass
-        return Response({"ok": True})
-
-
-class AdminWarningListView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        from django.utils import timezone
-        warnings = UserWarning.objects.select_related("user", "issued_by").all()
-        for w in warnings:
-            w.refresh_status()
-        data = UserWarningSerializer(warnings, many=True).data
-        return Response(data)
-
-
-class AdminWarningDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request, warning_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        w = get_object_or_404(UserWarning, pk=warning_id)
-        if w.status == "executed":
-            return Response({"error": "Не можна видалити виконане попередження"}, status=400)
-        w.delete()
-        return Response(status=204)
-
-
-class BlockStatusView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        from django.utils import timezone
-        try:
-            block = request.user.block
-            if not block.is_active():
-                block.delete()
-                return Response({"blocked": False})
-            return Response({
-                "blocked": True,
-                "reason": block.reason,
-                "is_permanent": block.is_permanent,
-                "blocked_until": block.blocked_until,
-            })
-        except UserBlock.DoesNotExist:
-            return Response({"blocked": False})
-
-
-class AppealChatView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        try:
-            block = request.user.block
-        except UserBlock.DoesNotExist:
-            return Response({"error": "Не заблоковано"}, status=400)
-        chat, _ = AppealChat.objects.get_or_create(user=request.user, defaults={"block": block})
-        return Response(AppealChatSerializer(chat).data)
-
-    def post(self, request):
-        try:
-            block = request.user.block
-        except UserBlock.DoesNotExist:
-            return Response({"error": "Не заблоковано"}, status=400)
-        chat, _ = AppealChat.objects.get_or_create(user=request.user, defaults={"block": block})
-        if chat.is_closed:
-            return Response({"error": "Чат закрито"}, status=400)
-        text = request.data.get("text", "").strip()
-        if not text:
-            return Response({"error": "Порожнє повідомлення"}, status=400)
-        msg = AppealMessage.objects.create(chat=chat, author=request.user, text=text)
-        return Response(AppealMessageSerializer(msg).data, status=201)
-
-
-class AppealStaffView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        chats = AppealChat.objects.filter(is_closed=False).select_related("user", "block")
-        return Response(AppealChatSerializer(chats, many=True).data)
-
-    def post(self, request, chat_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        chat = get_object_or_404(AppealChat, pk=chat_id)
-        text = request.data.get("text", "").strip()
-        if not text:
-            return Response({"error": "Порожнє повідомлення"}, status=400)
-        msg = AppealMessage.objects.create(chat=chat, author=request.user, text=text)
-        return Response(AppealMessageSerializer(msg).data, status=201)
-
-
-class AppealResolveView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, chat_id):
-        if not is_staff(request.user):
-            return Response({"error": "Недостатньо прав"}, status=403)
-        chat = get_object_or_404(AppealChat, pk=chat_id)
-        action = request.data.get("action")
-
-        if action == "unblock":
-            UserBlock.objects.filter(user=chat.user).delete()
-            chat.is_closed = True
-            chat.save(update_fields=["is_closed"])
-            Notification.objects.create(
-                user=chat.user,
-                type="moderation_warning",
-                body="Вашу апеляцію розглянуто. Блокування знято.",
-                link_type="",
-                link_params={},
-            )
-            return Response({"ok": True, "unblocked": True})
-
-        if action == "close":
-            chat.is_closed = True
-            chat.save(update_fields=["is_closed"])
-            Notification.objects.create(
-                user=chat.user,
-                type="moderation_warning",
-                body="Вашу апеляцію розглянуто. Рішення про блокування залишено в силі.",
-                link_type="",
-                link_params={},
-            )
-            return Response({"ok": True, "unblocked": False})
-
-        return Response({"error": "Вкажіть action: unblock або close"}, status=400)
+class ProfileMessage(models.Model):
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="sent_profile_messages"
+    )
+    target_user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="profile_messages"
+    )
+    text = models.TextField(verbose_name="Повідомлення")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-created_at"]
+ 
+    def __str__(self):
+        return f"{self.author.username} → {self.target_user.username}: {self.text[:40]}"
     
-
-class PCSpecsAutoView(APIView):
-    """
-    POST /api/specs/auto/
-    Викликається утилітою VortexSpecs.exe з токеном у заголовку.
-    Якщо у юзера вже є specs з pc_name що збігається — оновлює.
-    Якщо немає — створює новий запис.
-    """
-    permission_classes = [IsAuthenticated]
+class FeaturedBuild(models.Model):
+    build = models.OneToOneField(
+        Build, on_delete=models.CASCADE, related_name="featured"
+    )
+    promoted_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="promoted_builds"
+    )
+    expires_at = models.DateTimeField(verbose_name="Дійсно до")
+    created_at = models.DateTimeField(auto_now_add=True)
  
-    def post(self, request):
-        data = request.data
-        pc_name = data.get("pc_name", "").strip()
+    class Meta:
+        verbose_name = "Просування збірки"
+        verbose_name_plural = "Просування збірок"
  
-        existing = PCSpecs.objects.filter(
-            user=request.user,
-            pc_name=pc_name,
-        ).first() if pc_name else None
- 
-        if not existing:
-            existing = PCSpecs.objects.filter(user=request.user).first()
- 
-        payload = {
-            "label": pc_name or "Мій ПК",
-            "pc_name": pc_name,
-            "cpu_model": data.get("cpu_model", "").strip(),
-            "gpu_model": data.get("gpu_model", "").strip(),
-            "ram_gb": int(data.get("ram_gb") or 0),
-            "ram_mhz": int(data.get("ram_mhz")) if data.get("ram_mhz") else None,
-            "is_active": True,
-        }
- 
-        if existing:
-            for k, v in payload.items():
-                setattr(existing, k, v)
-            existing.save()
-            return Response(PCSpecsSerializer(existing).data)
-        else:
-            spec = PCSpecs.objects.create(user=request.user, **payload)
-            return Response(PCSpecsSerializer(spec).data, status=201)
-
-
-class CustomLoginView(APIView):
-    permission_classes = (AllowAny,)
-
-    def post(self, request):
+    def is_active(self):
         from django.utils import timezone
-        from django.core.mail import send_mail
-        from django.template.loader import render_to_string
-        from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-        import os
-
-        serializer = TokenObtainPairSerializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except Exception:
-            return Response({"detail": "Невірний логін або пароль"}, status=401)
-
-        user = serializer.user
-
-        # Оновлюємо last_seen
-        try:
-            user.profile.last_seen = timezone.now()
-            user.profile.save(update_fields=["last_seen"])
-        except Exception:
-            pass
-
-        role = get_role(user)
-        needs_2fa = (
-            role in ("admin", "manager") or
-            (role == "user" and getattr(getattr(user, "profile", None), "two_factor_enabled", False))
-        )
-
-        if needs_2fa:
-            from .models import TwoFactorToken
-            import uuid
-
-            # Видаляємо старий токен якщо є
-            TwoFactorToken.objects.filter(user=user).delete()
-
-            token_value = uuid.uuid4()
-            TwoFactorToken.objects.create(user=user, token=token_value)
-
-            frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-            verify_url = f"{frontend_url}?tfa_token={token_value}"
-
-            html_body = render_to_string("vortex_2fa_email.html", {
-                "username": user.username,
-                "verify_url": verify_url,
-            })
-
-            try:
-                send_mail(
-                    subject="Підтвердження входу — Vortex",
-                    message=f"Перейдіть за посиланням для входу: {verify_url}",
-                    from_email=os.environ.get("DEFAULT_FROM_EMAIL", "noreply@vortex.com"),
-                    recipient_list=[user.email],
-                    html_message=html_body,
-                    fail_silently=False,
-                )
-            except Exception as e:
-                logger.error(f"2FA email error for {user.username}: {e}")
-                return Response({"detail": "Не вдалося надіслати email. Спробуйте пізніше."}, status=500)
-
-            return Response({"tfa_required": True}, status=202)
-
-        return Response(serializer.validated_data)
+        return timezone.now() < self.expires_at
+ 
+    def __str__(self):
+        return f"Featured: {self.build.title}"
 
 
-class TwoFactorVerifyView(APIView):
-    permission_classes = (AllowAny,)
-
-    def post(self, request):
-        from django.utils import timezone
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from .models import TwoFactorToken
-
-        token_value = request.data.get("token")
-        if not token_value:
-            return Response({"detail": "Токен відсутній"}, status=400)
-
-        try:
-            tfa = TwoFactorToken.objects.select_related("user").get(token=token_value)
-        except TwoFactorToken.DoesNotExist:
-            return Response({"detail": "Недійсне або застаріле посилання"}, status=400)
-
-        if not tfa.is_valid():
-            tfa.delete()
-            return Response({"detail": "Посилання вже застаріло. Увійдіть знову."}, status=400)
-
-        user = tfa.user
-        tfa.delete()
-
-        refresh = RefreshToken.for_user(user)
-
-        try:
-            user.profile.last_seen = timezone.now()
-            user.profile.save(update_fields=["last_seen"])
-        except Exception:
-            pass
-
-        return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-        })
+class WorkshopDraft(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="workshop_drafts"
+    )
+    build_name = models.CharField(max_length=255, blank=True)
+    zip_file = models.FileField(upload_to="workshop_drafts/")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Чернетка майстерні"
+        verbose_name_plural = "Чернетки майстерні"
+ 
+    def __str__(self):
+        return f"Draft({self.user.username}): {self.build_name}"
     
-class FeaturedBuildsView(APIView):
-    permission_classes = []
+class VirusScanResult(models.Model):
+    STATUS_CHOICES = [
+        ("clean", "Чисто"),
+        ("suspicious", "Підозріло"),
+        ("dangerous", "Небезпечно"),
+    ]
+    build = models.OneToOneField(Build, on_delete=models.CASCADE, related_name="virus_scan")
+    scanned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="virus_scans")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    engines_total = models.IntegerField(default=0)
+    engines_detected = models.IntegerField(default=0)
+    scan_id = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    scanned_at = models.DateTimeField(auto_now_add=True)
  
-    def get(self, request):
-        from django.utils import timezone
-        featured = FeaturedBuild.objects.filter(
-            expires_at__gt=timezone.now()
-        ).select_related("build__author").prefetch_related("build__images", "build__reviews")
-        builds = [f.build for f in featured]
-        return Response(
-            BuildSerializer(builds, many=True, context={"request": request}).data
-        )
-    
-class PromoteBuildView(APIView):
-    permission_classes = [IsAuthenticated]
+    class Meta:
+        verbose_name = "Результат антивірусної перевірки"
  
-    def post(self, request, build_id):
-        from django.utils import timezone
-        from datetime import timedelta
-        build = get_object_or_404(Build, pk=build_id, author=request.user)
-        FeaturedBuild.objects.filter(build=build).delete()
-        FeaturedBuild.objects.create(
-            build=build,
-            promoted_by=request.user,
-            expires_at=timezone.now() + timedelta(days=7),
-        )
-        return Response({"ok": True, "expires_at": timezone.now() + timedelta(days=7)})
+    def __str__(self):
+        return f"{self.build.title}: {self.get_status_display()} ({self.engines_detected}/{self.engines_total})"
+ 
+ 
+class UserScanPurchase(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="scan_purchases")
+    build = models.ForeignKey(Build, on_delete=models.CASCADE, related_name="scan_purchases")
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ("user", "build")
+ 
+    def __str__(self):
+        return f"{self.user.username} → {self.build.title}"
