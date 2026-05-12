@@ -1973,35 +1973,38 @@ class CustomLoginView(APIView):
 
         if needs_2fa:
             from .models import TwoFactorToken
-            import uuid
+            import uuid, threading
+            from django.conf import settings as _s
 
-            # Видаляємо старий токен якщо є
             TwoFactorToken.objects.filter(user=user).delete()
-
             token_value = uuid.uuid4()
             TwoFactorToken.objects.create(user=user, token=token_value)
 
-            frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-            verify_url = f"{frontend_url}?tfa_token={token_value}"
+            _frontend = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+            _verify_url = f"{_frontend}?tfa_token={token_value}"
+            _username = user.username
+            _email = user.email
+            _key = getattr(_s, "RESEND_API_KEY", "")
 
-            html_body = render_to_string("vortex_2fa_email.html", {
-                "username": user.username,
-                "verify_url": verify_url,
-            })
+            def _send_2fa(_email=_email, _username=_username, _verify_url=_verify_url, _key=_key):
+                try:
+                    from django.template.loader import render_to_string
+                    html = render_to_string("vortex_2fa_email.html", {
+                        "username": _username,
+                        "verify_url": _verify_url,
+                    })
+                    import resend
+                    resend.api_key = _key
+                    resend.Emails.send({
+                        "from": "noreply@vortex-arizona.online",
+                        "to": _email,
+                        "subject": "Vortex — підтвердження входу",
+                        "html": html,
+                    })
+                except Exception as e:
+                    logger.error(f"[2FA] Помилка надсилання: {e}")
 
-            try:
-                send_mail(
-                    subject="Підтвердження входу — Vortex",
-                    message=f"Перейдіть за посиланням для входу: {verify_url}",
-                    from_email=os.environ.get("DEFAULT_FROM_EMAIL", "noreply@vortex.com"),
-                    recipient_list=[user.email],
-                    html_message=html_body,
-                    fail_silently=False,
-                )
-            except Exception as e:
-                logger.error(f"2FA email error for {user.username}: {e}")
-                return Response({"detail": "Не вдалося надіслати email. Спробуйте пізніше."}, status=500)
-
+            threading.Thread(target=_send_2fa, daemon=True).start()
             return Response({"tfa_required": True}, status=202)
 
         return Response(serializer.validated_data)
