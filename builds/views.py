@@ -1942,25 +1942,107 @@ class PCSpecsAutoView(APIView):
 
 class CustomLoginView(APIView):
     permission_classes = (AllowAny,)
- 
+
     def post(self, request):
         from django.utils import timezone
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
         from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
- 
+        import os
+
         serializer = TokenObtainPairSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
-        except Exception as e:
+        except Exception:
             return Response({"detail": "Невірний логін або пароль"}, status=401)
- 
+
         user = serializer.user
+
+        # Оновлюємо last_seen
         try:
             user.profile.last_seen = timezone.now()
             user.profile.save(update_fields=["last_seen"])
         except Exception:
             pass
- 
+
+        role = get_role(user)
+        needs_2fa = (
+            role in ("admin", "manager") or
+            (role == "user" and getattr(getattr(user, "profile", None), "two_factor_enabled", False))
+        )
+
+        if needs_2fa:
+            from .models import TwoFactorToken
+            import uuid
+
+            # Видаляємо старий токен якщо є
+            TwoFactorToken.objects.filter(user=user).delete()
+
+            token_value = uuid.uuid4()
+            TwoFactorToken.objects.create(user=user, token=token_value)
+
+            frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+            verify_url = f"{frontend_url}?tfa_token={token_value}"
+
+            html_body = render_to_string("vortex_2fa_email.html", {
+                "username": user.username,
+                "verify_url": verify_url,
+            })
+
+            try:
+                send_mail(
+                    subject="Підтвердження входу — Vortex",
+                    message=f"Перейдіть за посиланням для входу: {verify_url}",
+                    from_email=os.environ.get("DEFAULT_FROM_EMAIL", "noreply@vortex.com"),
+                    recipient_list=[user.email],
+                    html_message=html_body,
+                    fail_silently=False,
+                )
+            except Exception as e:
+                logger.error(f"2FA email error for {user.username}: {e}")
+                return Response({"detail": "Не вдалося надіслати email. Спробуйте пізніше."}, status=500)
+
+            return Response({"tfa_required": True}, status=202)
+
         return Response(serializer.validated_data)
+
+
+class TwoFactorVerifyView(APIView):
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        from django.utils import timezone
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from .models import TwoFactorToken
+
+        token_value = request.data.get("token")
+        if not token_value:
+            return Response({"detail": "Токен відсутній"}, status=400)
+
+        try:
+            tfa = TwoFactorToken.objects.select_related("user").get(token=token_value)
+        except TwoFactorToken.DoesNotExist:
+            return Response({"detail": "Недійсне або застаріле посилання"}, status=400)
+
+        if tfa.is_expired():
+            tfa.delete()
+            return Response({"detail": "Посилання вже застаріло. Увійдіть знову."}, status=400)
+
+        user = tfa.user
+        tfa.delete()
+
+        refresh = RefreshToken.for_user(user)
+
+        try:
+            user.profile.last_seen = timezone.now()
+            user.profile.save(update_fields=["last_seen"])
+        except Exception:
+            pass
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        })
     
 class FeaturedBuildsView(APIView):
     permission_classes = []
