@@ -348,7 +348,7 @@ class BuildViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": "Текст не може бути порожнім"}, status=400)
         reply = BuildPostReply.objects.create(post=post, author=request.user, text=text)
         if post.author != request.user:
-            notify_post_reply(post.author, request.user, build.id, post.id, reply.id)
+            notify_post_reply(post.author, request.user, build.id, post.id, reply.id, build_title=build.title)
         return Response(
             BuildPostReplySerializer(reply, context={"request": request}).data,
             status=201,
@@ -1936,25 +1936,103 @@ class PCSpecsAutoView(APIView):
 
 class CustomLoginView(APIView):
     permission_classes = (AllowAny,)
- 
+
     def post(self, request):
         from django.utils import timezone
         from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
- 
+        from .models import TwoFactorToken
+
         serializer = TokenObtainPairSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
-        except Exception as e:
+        except Exception:
             return Response({"detail": "Невірний логін або пароль"}, status=401)
- 
+
         user = serializer.user
         try:
             user.profile.last_seen = timezone.now()
             user.profile.save(update_fields=["last_seen"])
         except Exception:
             pass
- 
+
+        role = getattr(getattr(user, 'profile', None), 'role', 'user')
+        tfa_enabled = getattr(getattr(user, 'profile', None), 'two_factor_enabled', False)
+        needs_2fa = role in ('admin', 'manager') or tfa_enabled
+
+        if needs_2fa and user.email:
+            import uuid, threading
+            from django.conf import settings
+            token_obj, _ = TwoFactorToken.objects.update_or_create(
+                user=user, defaults={"token": uuid.uuid4()})
+            _token = str(token_obj.token)
+            _email = user.email
+            _username = user.username
+            _frontend = getattr(settings, 'FRONTEND_URL', 'https://vortex-arizona.online')
+            _key = getattr(settings, 'RESEND_API_KEY', '')
+            _verify_url = f"{_frontend}?tfa_token={_token}"
+            from django.template.loader import render_to_string
+            _html = render_to_string("vortex_2fa_email.html", {
+                "username": _username,
+                "verify_url": _verify_url,
+            })
+
+            def _send_2fa(_html=_html, _email=_email, _key=_key):
+                try:
+                    import resend
+                    resend.api_key = _key
+                    resend.Emails.send({
+                        "from": "noreply@vortex-arizona.online",
+                        "to": _email,
+                        "subject": "Vortex — підтвердження входу",
+                        "html": _html,
+                    })
+                except Exception as e:
+                    logger.error(f"[2FA] Помилка надсилання: {e}")
+
+            threading.Thread(target=_send_2fa, daemon=True).start()
+            return Response({"tfa_required": True,
+                "detail": "На вашу пошту надіслано посилання для підтвердження входу."}, status=202)
+
         return Response(serializer.validated_data)
+
+
+class TwoFactorVerifyView(APIView):
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        from django.utils import timezone
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from .models import TwoFactorToken
+
+        token_str = request.data.get("token", "").strip()
+        if not token_str:
+            return Response({"detail": "Токен є обов'язковим"}, status=400)
+
+        try:
+            import uuid
+            token_obj = TwoFactorToken.objects.select_related("user").get(token=uuid.UUID(token_str))
+        except (TwoFactorToken.DoesNotExist, ValueError):
+            return Response({"detail": "Недійсний або прострочений токен"}, status=400)
+
+        if not token_obj.is_valid():
+            token_obj.delete()
+            return Response({"detail": "Посилання застаріло. Увійдіть знову."}, status=400)
+
+        user = token_obj.user
+        token_obj.delete()
+
+        try:
+            user.profile.last_seen = timezone.now()
+            user.profile.save(update_fields=["last_seen"])
+        except Exception:
+            pass
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "access_token": str(refresh.access_token),
+        })
     
 class FeaturedBuildsView(APIView):
     permission_classes = []

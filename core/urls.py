@@ -13,7 +13,8 @@ from builds.views import (
     PasswordResetRequestView,
     RegisterView,
     EmailConfirmView,
-    CustomLoginView
+    CustomLoginView,
+    TwoFactorVerifyView,
 )
 
 
@@ -70,6 +71,7 @@ urlpatterns = [
         EmailConfirmView.as_view(),
         name="email_confirm",
     ),
+    path("api/auth/2fa/verify/", TwoFactorVerifyView.as_view(), name="2fa_verify"),
     path("auth/", include("allauth.urls")),
     path("accounts/profile/", google_callback_redirect, name="google_done"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,14 +1,14 @@
 from .models import Notification
 
 
-def notify_post_reply(user, actor, build_id, post_id, reply_id):
+def notify_post_reply(user, actor, build_id, post_id, reply_id, build_title=""):
     Notification.objects.create(
         user=user,
         type="post_reply",
         actor_name=actor.username,
         body=f"{actor.username} відповів(-ла) на ваш пост.",
         link_type="build_post_reply",
-        link_params={"build_id": build_id, "post_id": post_id, "reply_id": reply_id},
+        link_params={"build_id": build_id, "post_id": post_id, "reply_id": reply_id, "build_title": build_title},
     )
 
 

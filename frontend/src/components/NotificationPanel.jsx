@@ -136,6 +136,18 @@ export default function NotificationPanel({ dark, notifications, unreadCount, ma
                           {' '}{n.body.replace(n.actor_name, '').trim()}
                         </>
                       ) : n.body}
+                      {/* Посилання на збірку */}
+                      {n.link_params?.build_title && n.link_params?.build_id && onNavigate && (
+                        <>
+                          {' '}
+                          <span
+                            className="notif-link"
+                            onClick={e => { e.stopPropagation(); setOpen(false); onNavigate('catalog', { highlight: { build_id: n.link_params.build_id } }); }}
+                          >
+                            «{n.link_params.build_title}»
+                          </span>
+                        </>
+                      )}
                     </p>
                     <span className="notif-item-time">{timeAgo(n.created_at)}</span>
                   </div>

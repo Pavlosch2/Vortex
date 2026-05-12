@@ -14,6 +14,7 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
   const [errors, setErrors]           = useState({});
   const [info, setInfo]               = useState('');
   const [loginFailed, setLoginFailed] = useState(false);
+  const [tfaPending, setTfaPending] = useState(false);
 
   const setErr = (field, msg) => setErrors(prev => ({ ...prev, [field]: msg }));
   const clearErrors = () => setErrors({});
@@ -22,12 +23,20 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
     e.preventDefault();
     clearErrors();
     try {
-      const res   = await axios.post(`${API}/auth/login/`, loginData);
+      const res = await axios.post(`${API}/auth/login/`, loginData);
+      if (res.status === 202 && res.data.tfa_required) {
+        setTfaPending(true);
+        return;
+      }
       const token = res.data.access_token || res.data.access;
       localStorage.setItem('vortex_token', token);
       localStorage.setItem('vortex_theme', dark ? 'dark' : 'light');
       onLoginSuccess(token);
-    } catch {
+    } catch (err) {
+      if (err.response?.status === 202 && err.response?.data?.tfa_required) {
+        setTfaPending(true);
+        return;
+      }
       setErr('login', 'Невірний логін або пароль.');
       setLoginFailed(true);
     }
@@ -69,6 +78,42 @@ const Auth = ({ onLoginSuccess, dark, setDark }) => {
   };
 
   const isRegister = view === 'register';
+
+  if (tfaPending) {
+    return (
+      <div className={`page-root${dark ? ' dark-mode-variables' : ''}`}>
+        <header className="site-header">
+          <div className="header-logo">
+            <img src={logo} alt="Vortex" className="header-logo-img" />
+            <span className="header-logo-text">Vortex</span>
+          </div>
+        </header>
+        <div className="auth-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(108,155,207,0.2)',
+            borderRadius: '1.25rem', padding: '2.5rem', maxWidth: '420px', width: '100%',
+            textAlign: 'center', backdropFilter: 'blur(20px)',
+          }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📧</div>
+            <h2 style={{ color: '#edeffd', fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.75rem' }}>
+              Підтвердіть вхід
+            </h2>
+            <p style={{ color: '#a3bdcc', fontSize: '0.82rem', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+              На вашу пошту надіслано посилання для підтвердження входу.<br />
+              Посилання дійсне <strong style={{ color: '#edeffd' }}>3 хвилини</strong>.
+            </p>
+            <button
+              className="submit-btn"
+              style={{ width: '100%', marginBottom: '0.75rem' }}
+              onClick={() => { setTfaPending(false); setLoginFailed(false); }}
+            >
+              ← Назад до входу
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`page-root${dark ? ' dark-mode-variables' : ''}`}>

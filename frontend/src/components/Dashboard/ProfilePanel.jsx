@@ -164,6 +164,8 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
 
   const [editingBio, setEditingBio] = useState(false);
   const [bioText, setBioText] = useState('');
+  const [tfaEnabled, setTfaEnabled] = useState(false);
+  const [savingTfa, setSavingTfa] = useState(false);
   const [savingBio, setSavingBio] = useState(false);
 
   useEffect(() => {
@@ -179,6 +181,7 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
       if (profileRes?.data) {
         setProfile(profileRes.data);
         setBioText(profileRes.data.bio || '');
+        setTfaEnabled(profileRes.data.two_factor_enabled || false);
       }
     }).finally(() => setLoading(false));
   }, [collapsed]);
@@ -347,6 +350,50 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
                 }
               </div>
             )}
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <h4 className="pp-specs-heading" style={{ color: textColor }}>
+              🔐 Безпека
+            </h4>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0.65rem 0.85rem', borderRadius: '0.7rem',
+              background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(108,155,207,0.05)',
+              border: dark ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(108,155,207,0.15)',
+            }}>
+              <div>
+                <p style={{ color: textColor, fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Двофакторна автентифікація</p>
+                <p style={{ color: subTextColor, fontSize: '0.7rem', margin: '0.15rem 0 0' }}>
+                  При вході надсилається посилання підтвердження на email
+                </p>
+              </div>
+              <button
+                disabled={savingTfa}
+                onClick={async () => {
+                  setSavingTfa(true);
+                  try {
+                    const newVal = !tfaEnabled;
+                    await axios.patch(`${API}/profile/`, { two_factor_enabled: newVal }, { headers: authH() });
+                    setTfaEnabled(newVal);
+                    setProfile(p => ({ ...p, two_factor_enabled: newVal }));
+                  } catch {}
+                  setSavingTfa(false);
+                }}
+                style={{
+                  width: '44px', height: '24px', borderRadius: '12px', border: 'none',
+                  background: tfaEnabled ? '#1B9c85' : (dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'),
+                  cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: '3px',
+                  left: tfaEnabled ? '22px' : '3px',
+                  width: '18px', height: '18px', borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
           </div>
 
           {profile?.plan === 'pro' && (

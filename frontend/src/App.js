@@ -16,11 +16,28 @@ const App = () => {
   const [confirmParams, setConfirmParams] = useState(null);
   const [blockInfo, setBlockInfo] = useState(null);
   const [blockChecked, setBlockChecked] = useState(false);
+  const [tfaVerifying, setTfaVerifying] = useState(false);
+  const [tfaError, setTfaError] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const googleToken = params.get('token');
     const authError = params.get('auth_error');
+    const tfaToken = params.get('tfa_token');
+
+    if (tfaToken) {
+      window.history.replaceState({}, '', '/');
+      setTfaVerifying(true);
+      axios.post(`${API}/auth/2fa/verify/`, { token: tfaToken })
+        .then(res => {
+          const t = res.data.access_token || res.data.access;
+          localStorage.setItem('vortex_token', t);
+          setToken(t);
+        })
+        .catch(() => setTfaError('Посилання недійсне або застаріло. Увійдіть знову.'))
+        .finally(() => setTfaVerifying(false));
+      return;
+    }
 
     if (googleToken) {
       localStorage.setItem('vortex_token', googleToken);
@@ -93,6 +110,28 @@ const App = () => {
       />
     );
   }
+
+  if (tfaVerifying) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1117', fontFamily: 'Poppins, sans-serif' }}>
+      <div style={{ textAlign: 'center', color: '#edeffd' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔐</div>
+        <p style={{ color: '#a3bdcc', fontSize: '0.9rem' }}>Перевірка посилання...</p>
+      </div>
+    </div>
+  );
+
+  if (tfaError) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1117', fontFamily: 'Poppins, sans-serif' }}>
+      <div style={{ textAlign: 'center', color: '#edeffd', maxWidth: '380px', padding: '2rem' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>❌</div>
+        <p style={{ marginBottom: '1rem', color: '#a3bdcc', fontSize: '0.85rem' }}>{tfaError}</p>
+        <button onClick={() => setTfaError(null)}
+          style={{ padding: '0.65rem 1.8rem', background: 'linear-gradient(135deg,#6c9bcf,#1B9c85)', color: '#fff', border: 'none', borderRadius: '0.75rem', cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontWeight: 600 }}>
+          На головну
+        </button>
+      </div>
+    </div>
+  );
 
   if (!token) return <Auth onLoginSuccess={handleLoginSuccess} dark={dark} setDark={setDark} />;
 

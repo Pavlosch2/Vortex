@@ -100,6 +100,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "username", "role", "ai_credits", "is_premium",
             "avatar", "banner", "bio", "plan",
             "profile_color", "avatar_frame", "av_checks_left",
+            "two_factor_enabled",
         ]
 
 

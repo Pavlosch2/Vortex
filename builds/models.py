@@ -36,6 +36,7 @@ class Profile(models.Model):
     av_checks_left = models.IntegerField(default=0, verbose_name="Залишилось антивірусних перевірок")
     profile_color = models.CharField(max_length=7, blank=True, default="", verbose_name="Колір ніку (Pro)")
     avatar_frame = models.CharField(max_length=20, blank=True, default="", choices=FRAME_CHOICES, verbose_name="Рамка аватарки (Pro)")
+    two_factor_enabled = models.BooleanField(default=False, verbose_name="Двофакторна автентифікація")
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
@@ -43,6 +44,20 @@ class Profile(models.Model):
     @property
     def is_premium(self):
         return self.plan in ("standard", "pro")
+
+
+class TwoFactorToken(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tfa_token")
+    token = models.UUIDField(default=__import__('uuid').uuid4, unique=True)
+    created_at = models.DateTimeField(auto_now=True)
+
+    def is_valid(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        return timezone.now() < self.created_at + timedelta(minutes=3)
+
+    def __str__(self):
+        return f"2FA token for {self.user.username}"
 
 
 @receiver(post_save, sender=User)
