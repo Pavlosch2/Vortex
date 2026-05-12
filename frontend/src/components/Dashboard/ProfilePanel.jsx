@@ -368,31 +368,41 @@ const ProfilePanel = ({ dark, collapsed, setCollapsed, onOpenProfile }) => {
                   При вході надсилається посилання підтвердження на email
                 </p>
               </div>
-              <button
-                disabled={savingTfa}
-                onClick={async () => {
-                  setSavingTfa(true);
-                  try {
-                    const newVal = !tfaEnabled;
-                    await axios.patch(`${API}/profile/`, { two_factor_enabled: newVal }, { headers: authH() });
-                    setTfaEnabled(newVal);
-                    setProfile(p => ({ ...p, two_factor_enabled: newVal }));
-                  } catch {}
-                  setSavingTfa(false);
-                }}
-                style={{
-                  width: '44px', height: '24px', borderRadius: '12px', border: 'none',
-                  background: tfaEnabled ? '#1B9c85' : (dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'),
-                  cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                }}
-              >
-                <span style={{
-                  position: 'absolute', top: '3px',
-                  left: tfaEnabled ? '22px' : '3px',
-                  width: '18px', height: '18px', borderRadius: '50%',
-                  background: '#fff', transition: 'left 0.2s',
-                }} />
-              </button>
+              {(() => {
+                const isStaff = profile?.role === 'admin' || profile?.role === 'manager';
+                const isOn = isStaff ? true : tfaEnabled;
+                return (
+                  <button
+                    disabled={savingTfa || isStaff}
+                    onClick={async () => {
+                      if (isStaff) return;
+                      setSavingTfa(true);
+                      try {
+                        const newVal = !tfaEnabled;
+                        await axios.patch(`${API}/profile/`, { two_factor_enabled: newVal }, { headers: authH() });
+                        setTfaEnabled(newVal);
+                        setProfile(p => ({ ...p, two_factor_enabled: newVal }));
+                      } catch {}
+                      setSavingTfa(false);
+                    }}
+                    title={isStaff ? 'Адміністратори та менеджери завжди мають 2FA' : ''}
+                    style={{
+                      width: '44px', height: '24px', borderRadius: '12px', border: 'none',
+                      background: isOn ? '#1B9c85' : (dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'),
+                      cursor: isStaff ? 'not-allowed' : 'pointer',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                      opacity: isStaff ? 0.7 : 1,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: '3px',
+                      left: isOn ? '22px' : '3px',
+                      width: '18px', height: '18px', borderRadius: '50%',
+                      background: '#fff', transition: 'left 0.2s',
+                    }} />
+                  </button>
+                );
+              })()}
             </div>
           </div>
 
