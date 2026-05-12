@@ -28,7 +28,8 @@ from .models import (
     AppealChat,
     AppealMessage,
     ProfileMessage,
-    FeaturedBuild
+    FeaturedBuild,
+    TwoFactorToken,
 )
 from .serializers import (
     AIAnalysisLogSerializer,
