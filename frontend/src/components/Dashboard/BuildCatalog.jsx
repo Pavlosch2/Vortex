@@ -381,7 +381,7 @@ const UserScanButton = ({ buildId, dark }) => {
   const handleClick = async () => {
     setState('loading');
     try {
-      const postRes = await axios.post(`${API}/builds/${buildId}/scan-result/`, {}, { headers: auth() });
+      await axios.post(`${API}/builds/${buildId}/scan-result/`, {}, { headers: auth() });
       const res = await axios.get(`${API}/builds/${buildId}/scan-result/`, { headers: auth() });
       if (!res.data.status || res.data.status === 'scanning') {
         // Сканування запущено у фоні — починаємо polling
