@@ -145,6 +145,88 @@ const SubmissionFileViewer = ({ submissionId, dark, textColor, subColor, cardBg,
   );
 };
 
+const SubmissionScanButton = ({ submissionArchiveUrl, submissionId, uploadDone, dark, subColor }) => {
+  const [scanState, setScanState] = React.useState('idle');
+  const [scanResult, setScanResult] = React.useState(null);
+  const pollRef = React.useRef(null);
+
+  React.useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const LABEL = {
+    clean:      { text: 'Чисто',      color: '#1B9c85', icon: '✅' },
+    suspicious: { text: 'Підозріло',  color: '#f7d060', icon: '⚠️' },
+    dangerous:  { text: 'Небезпечно', color: '#e05252', icon: '🔴' },
+    error:      { text: 'Помилка',    color: '#e05252', icon: '❌' },
+  };
+
+  const handleScan = async () => {
+    setScanState('scanning');
+    try {
+      // Використовуємо endpoint для сканування через archive_url заявки
+      await axios.post(`${API}/workshop/scan/`, { archive_url: submissionArchiveUrl }, { headers: auth() });
+      // Відразу отримуємо результат (синхронно для адмінів — без затримки)
+      const res = await axios.post(`${API}/admin/submissions/${submissionId}/scan/`, {}, { headers: auth() });
+      if (res.data.scanning) {
+        pollRef.current = setInterval(async () => {
+          try {
+            const poll = await axios.get(`${API}/admin/submissions/${submissionId}/scan-status/`, { headers: auth() });
+            if (poll.data.status && poll.data.status !== 'scanning') {
+              clearInterval(pollRef.current);
+              setScanResult(poll.data);
+              setScanState('result');
+            }
+          } catch {}
+        }, 4000);
+      } else {
+        setScanResult(res.data);
+        setScanState('result');
+      }
+    } catch {
+      setScanState('error');
+    }
+  };
+
+  if (!uploadDone) {
+    return (
+      <button className="ap-btn" disabled style={{ marginBottom: '0.5rem', fontSize: '0.73rem', opacity: 0.5,
+        color: subColor, border: `1px solid rgba(108,155,207,0.15)`, background: 'none' }}>
+        🔍 AV перевірка (очікує завантаження)
+      </button>
+    );
+  }
+
+  if (scanState === 'result' && scanResult) {
+    const s = LABEL[scanResult.status] || LABEL.error;
+    return (
+      <div style={{ marginBottom: '0.5rem', fontSize: '0.75rem', color: s.color, fontWeight: 600 }}>
+        {s.icon} AV: {s.text}
+        {scanResult.engines_detected != null && ` (${scanResult.engines_detected}/${scanResult.engines_total})`}
+      </div>
+    );
+  }
+
+  if (scanState === 'scanning') {
+    return (
+      <div style={{ marginBottom: '0.5rem', fontSize: '0.73rem', color: '#6c9bcf',
+        display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <Loader size={11} className="spin" /> AV сканування... (може тривати хвилину)
+      </div>
+    );
+  }
+
+  if (scanState === 'error') {
+    return <div style={{ marginBottom: '0.5rem', fontSize: '0.72rem', color: '#e05252' }}>❌ Помилка AV сканування</div>;
+  }
+
+  return (
+    <button className="ap-btn" onClick={handleScan}
+      style={{ marginBottom: '0.5rem', fontSize: '0.73rem', color: '#6c9bcf',
+        border: '1px solid rgba(108,155,207,0.25)', background: 'rgba(108,155,207,0.07)' }}>
+      🔍 AV перевірка (опційно)
+    </button>
+  );
+};
+
 const SubmissionsTab = ({ dark, addToast }) => {
   const [subs, setSubs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -404,6 +486,15 @@ const SubmissionsTab = ({ dark, addToast }) => {
                             ⏳ Archive.org обробляє файл. Схвалення через {waitSec}с
                           </div>
                         )}
+                        {/* AV сканування — опційно, доступне після завантаження на Archive.org */}
+                        <SubmissionScanButton
+                          submissionArchiveUrl={s.archive_url}
+                          submissionId={s.id}
+                          uploadDone={uploadDone}
+                          dark={dark}
+                          subColor={subColor}
+                        />
+
                         {rejectId === s.id ? (
                           <div className="ap-reject-form">
                             <textarea className={`ap-reject-textarea ${theme}`}

@@ -40,10 +40,11 @@ from .views import (
 from .workshop_views import WorkshopBuildView, WorkshopSaveView
 
 from .av_views import (
-    AdminScanBuildView, 
-    AdminScanStatusView, 
-    UserScanResultView, 
-    WorkshopScanView
+    AdminScanBuildView,
+    AdminScanStatusView,
+    UserScanResultView,
+    WorkshopScanView,
+    AdminSubmissionScanView,
 )
 
 router = DefaultRouter()
@@ -92,4 +93,6 @@ urlpatterns = [
     path("admin/builds/<int:build_id>/scan-status/", AdminScanStatusView.as_view(), name="admin-scan-status"),
     path("builds/<int:build_id>/scan-result/", UserScanResultView.as_view(), name="user-scan-result"),
     path("workshop/scan/", WorkshopScanView.as_view(), name="workshop-scan"),
+    path("admin/submissions/<int:submission_id>/scan/", AdminSubmissionScanView.as_view(), name="admin-submission-scan"),
+    path("admin/submissions/<int:submission_id>/scan-status/", AdminSubmissionScanView.as_view(), name="admin-submission-scan-status"),
 ]

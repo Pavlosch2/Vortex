@@ -231,24 +231,134 @@ class UserScanResultView(APIView):
                 "engines_detected": scan.engines_detected,
                 "scanned_at": scan.scanned_at,
             })
-        except VirusScanResult.DoesNotExist:
+        except Exception:
             return Response({"status": None, "message": "Сканування ще не проводилось"})
 
     def post(self, request, build_id):
         build = get_object_or_404(Build, pk=build_id)
         profile = request.user.profile
+        is_pro = profile.plan == "pro"
 
-        already = UserScanPurchase.objects.filter(user=request.user, build=build).exists()
-        if already:
+        already_purchased = UserScanPurchase.objects.filter(user=request.user, build=build).exists()
+
+        # Якщо вже є доступ — просто повертаємо ок
+        if already_purchased or is_pro:
             return Response({"ok": True, "used_credits": False})
 
-        if profile.av_checks_left > 0:
-            profile.av_checks_left -= 1
-            profile.save(update_fields=["av_checks_left"])
-            UserScanPurchase.objects.create(user=request.user, build=build)
-            return Response({"ok": True, "used_credits": True, "checks_left": profile.av_checks_left})
+        # Перевіряємо чи є кредити
+        if profile.av_checks_left <= 0:
+            return Response({"error": "no_credits", "message": "Придбайте доступ або поповніть баланс перевірок"}, status=402)
 
-        return Response({"error": "no_credits", "message": "Придбайте доступ або поповніть баланс перевірок"}, status=402)
+        # Списуємо кредит і даємо доступ
+        profile.av_checks_left -= 1
+        profile.save(update_fields=["av_checks_left"])
+        UserScanPurchase.objects.create(user=request.user, build=build)
+
+        # Якщо результату ще немає — запускаємо сканування у фоні
+        has_result = hasattr(build, 'virus_scan') and build.virus_scan is not None
+        try:
+            build.virus_scan
+            has_result = True
+        except Exception:
+            has_result = False
+
+        if not has_result:
+            from .models import VirusScanResult
+            scan_result, _ = VirusScanResult.objects.get_or_create(
+                build=build,
+                defaults={"scanned_by": None, "status": "scanning"},
+            )
+
+            def _run_user_scan():
+                import tempfile, os, requests as req
+                from django.db import connection
+                try:
+                    if build.archive_url:
+                        r = req.get(build.archive_url, timeout=60)
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+                            tmp.write(r.content)
+                            tmp_path = tmp.name
+                        try:
+                            result = scan_file_virustotal(tmp_path)
+                        finally:
+                            os.unlink(tmp_path)
+                    else:
+                        return
+                    from django.utils import timezone
+                    connection.ensure_connection()
+                    VirusScanResult.objects.filter(build=build).update(
+                        status=result["status"],
+                        engines_total=result["engines_total"],
+                        engines_detected=result["engines_detected"],
+                        scan_id=result["scan_id"],
+                        details=result["details"],
+                        scanned_at=timezone.now(),
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"[VirusTotal] User scan error: {e}")
+                    VirusScanResult.objects.filter(build=build).update(status="error")
+                finally:
+                    connection.close()
+
+            threading.Thread(target=_run_user_scan, daemon=True).start()
+            return Response({"ok": True, "used_credits": True,
+                "checks_left": profile.av_checks_left, "scanning": True})
+
+        return Response({"ok": True, "used_credits": True, "checks_left": profile.av_checks_left})
+
+
+class AdminSubmissionScanView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, submission_id):
+        from .views import is_staff
+        from .models import BuildSubmission
+        from django.shortcuts import get_object_or_404
+        from django.core.cache import cache
+        if not is_staff(request.user):
+            return Response({'error': 'Недостатньо прав'}, status=403)
+        sub = get_object_or_404(BuildSubmission, pk=submission_id)
+        if not sub.archive_url:
+            return Response({'error': 'Файл ще не завантажено на Archive.org'}, status=400)
+        cache_key = f'sub_scan_{submission_id}'
+        cached = cache.get(cache_key)
+        if cached and not cached.get('scanning'):
+            return Response(cached)
+        def _run():
+            import tempfile, os, requests as req
+            from django.db import connection
+            from django.core.cache import cache as _cache
+            try:
+                r = req.get(sub.archive_url, timeout=120)
+                suffix = '.7z' if sub.archive_url.endswith('.7z') else '.zip'
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(r.content)
+                    tmp_path = tmp.name
+                try:
+                    result = scan_file_virustotal(tmp_path)
+                finally:
+                    os.unlink(tmp_path)
+                _cache.set(cache_key, {**result, 'scanning': False}, timeout=3600)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f'[VirusTotal] Submission scan error: {e}')
+                _cache.set(cache_key, {'status': 'error', 'scanning': False}, timeout=600)
+            finally:
+                connection.close()
+        cache.set(cache_key, {'scanning': True}, timeout=300)
+        threading.Thread(target=_run, daemon=True).start()
+        return Response({'scanning': True})
+
+    def get(self, request, submission_id):
+        from .views import is_staff
+        from django.core.cache import cache
+        if not is_staff(request.user):
+            return Response({'error': 'Недостатньо прав'}, status=403)
+        result = cache.get(f'sub_scan_{submission_id}')
+        if not result:
+            return Response({'status': None})
+        return Response(result)
 
 
 class WorkshopScanView(APIView):

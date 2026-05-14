@@ -353,52 +353,76 @@ const InstallButton = ({ build, onInstall }) => {
 const UserScanButton = ({ buildId, dark }) => {
   const [state, setState] = React.useState('idle');
   const [result, setResult] = React.useState(null);
+  const pollRef = React.useRef(null);
+
+  React.useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const SCAN_LABEL = {
     clean:      { text: 'Чисто',      color: '#1B9c85', icon: '✅' },
     suspicious: { text: 'Підозріло',  color: '#f7d060', icon: '⚠️' },
     dangerous:  { text: 'Небезпечно', color: '#e05252', icon: '🔴' },
+    error:      { text: 'Помилка',    color: '#e05252', icon: '❌' },
+    scanning:   { text: 'Сканується...', color: '#6c9bcf', icon: '⏳' },
+  };
+
+  const pollResult = () => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`${API}/builds/${buildId}/scan-result/`, { headers: auth() });
+        if (res.data.status && res.data.status !== 'scanning') {
+          clearInterval(pollRef.current);
+          setResult(res.data);
+          setState('result');
+        }
+      } catch {}
+    }, 5000);
   };
 
   const handleClick = async () => {
     setState('loading');
     try {
-      await axios.post(`${API}/builds/${buildId}/scan-result/`, {}, { headers: auth() });
+      const postRes = await axios.post(`${API}/builds/${buildId}/scan-result/`, {}, { headers: auth() });
       const res = await axios.get(`${API}/builds/${buildId}/scan-result/`, { headers: auth() });
-      if (res.data.status === null) {
-        setState('not_scanned');
+      if (!res.data.status || res.data.status === 'scanning') {
+        // Сканування запущено у фоні — починаємо polling
+        setState('scanning');
+        pollResult();
       } else {
         setResult(res.data);
         setState('result');
       }
     } catch (err) {
-      if (err.response?.data?.error === 'no_access' || err.response?.data?.error === 'no_credits') {
-        setState('no_access');
-      } else {
-        setState('idle');
-      }
+      const errCode = err.response?.data?.error;
+      if (errCode === 'no_credits') setState('no_credits');
+      else if (errCode === 'no_access') setState('no_access');
+      else setState('idle');
     }
   };
 
   if (state === 'result' && result) {
-    const s = SCAN_LABEL[result.status];
+    const s = SCAN_LABEL[result.status] || SCAN_LABEL.error;
     return (
       <span style={{ fontSize: '0.75rem', color: s.color, fontWeight: 600 }}>
-        {s.icon} {s.text} ({result.engines_detected}/{result.engines_total})
+        {s.icon} {s.text}
+        {result.engines_detected != null && ` (${result.engines_detected}/${result.engines_total})`}
       </span>
     );
   }
 
-  if (state === 'not_scanned') {
-    return <span style={{ fontSize: '0.72rem', color: '#7a8aab' }}>🔍 Сканування ще не проводилось</span>;
+  if (state === 'scanning') {
+    return (
+      <span style={{ fontSize: '0.73rem', color: '#6c9bcf', display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <Loader size={12} className="spin" /> Сканується... (може тривати до хвилини)
+      </span>
+    );
   }
 
   if (state === 'no_access') {
-    return (
-      <span style={{ fontSize: '0.72rem', color: '#f7d060' }}>
-        🔒 Потрібен Pro план або покупка
-      </span>
-    );
+    return <span style={{ fontSize: '0.72rem', color: '#f7d060' }}>🔒 Потрібен Pro план або AV-перевірки</span>;
+  }
+
+  if (state === 'no_credits') {
+    return <span style={{ fontSize: '0.72rem', color: '#f7d060' }}>⚡ Немає AV-перевірок. Поповніть баланс.</span>;
   }
 
   return (

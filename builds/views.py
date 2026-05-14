@@ -2073,4 +2073,4 @@ class PromoteBuildView(APIView):
             promoted_by=request.user,
             expires_at=timezone.now() + timedelta(days=7),
         )
-        return Response({"ok": True, "expires_at": timezone.now() + timedelta(days=7)})
+        return Response({"ok": True, "expires_at": timezone.now() + timedelta(days=7)}) 
